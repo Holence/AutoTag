@@ -5,6 +5,7 @@ import pickle
 import torch
 from tqdm import tqdm
 import numpy as np
+import re
 
 WORD_VEC_RAW_FILE="sgns.zhihu.char"
 WORD_ID_DICT_FILE="sgns.zhihu.wi.pkl"
@@ -102,25 +103,26 @@ def init_network(model, method='xavier', exclude='embedding', seed=123):
                 pass
 
 
-
-def load_corpus():
+def load_corpus(name, test_size=0.2):
 
     train_pipe=[]
     test_set={}
-    for i in os.listdir("./corpus"):
-        # if i in ["现视研","Astro"]:
-        if i in ["俄罗斯","Universe"]:
-            with open("./corpus/%s"%i,"r",encoding='utf-8') as f:
+    tag_list=[]
+    for tag in os.listdir("./%s"%name):
+        
+        with open("./%s/%s"%(name,tag),"r",encoding='utf-8') as f:
+            text=[_.strip() for _ in f.read().split("===") if _.strip()]
+            if len(text)>1:
                 
-                text=[_.strip() for _ in f.readlines()]
-                train,test=train_test_split(text,test_size=0.0001)
-                train_pipe.extend([(_,i) for _ in train])
-                test_set[i]=train
-                # test_set[i]=test
+                train,test=train_test_split(text,test_size=test_size)
+                train_pipe.extend([(_,tag) for _ in train])
+                test_set[tag]=test
+        
+                tag_list.append(tag)
 
     random.shuffle(train_pipe)
     
-    return train_pipe,test_set
+    return train_pipe, test_set, tag_list
 
 def pre_process(content):
     def is_chinese(uchar):
@@ -129,8 +131,9 @@ def pre_process(content):
         else:
             return False
     
-    content_str = ''
-    for i in content:
-        if is_chinese(i):
-            content_str = content_str + ｉ
+    # content_str = ''
+    # for i in content:
+    #     if is_chinese(i):
+    #         content_str = content_str + ｉ
+    content_str = re.sub(r'[^\w\s]','',content)
     return content_str

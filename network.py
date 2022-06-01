@@ -3,10 +3,10 @@ import torch.nn as nn
 from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence
 
 EMBED_DIM=300                   # word vec的维度
-HIDDEN_DIM=128                  # lstm隐藏层的向量维度
+HIDDEN_DIM=256                  # lstm隐藏层的向量维度
 LAYERS=2                        # lstm层数
 DROPOUT=0.5                     
-OUT_DIM=10                      # 输出空间的维度
+OUT_DIM=20                      # 输出空间的维度
 
 class VecNet(nn.Module):
     def __init__(self, word_num, word_embeddings=None):
@@ -20,60 +20,52 @@ class VecNet(nn.Module):
         self.lstm = nn.LSTM(EMBED_DIM, HIDDEN_DIM, LAYERS, bidirectional=True, batch_first=True, dropout=DROPOUT)
         self.full_connect = nn.Linear(HIDDEN_DIM * 2, OUT_DIM)
 
-    def forward(self, x, attach_embedding=None):
-        # x = [word_vec1, word_vec2, ...], [len(seq1), len(seq2), ...]
-        #     shape: (batch_size, emb_dim)=(128, 300)     shape: (batch_size)=300
-        
-        out = self.embedding(x)
-        # shape: (batch_size, pad_size, emb_dim)=(128, 32, 300)
+    def forward(self, x, attach_embedding=None, seq_lengths=None):
 
-        embedded=out
+        if seq_lengths==None:
+            # x是真实句子转换出的word_id
+            # x = [word_vec1, word_vec2, ...]
+            # 
+            # 在训练新样本时为了防止对旧tag的遗忘，要用到gen_net生成的embeddings，这里由attach_embedding传入
+            # 因为attach_embedding不是word_id，所以它进来的时候要跳过embedding层
+        
+            embedded = self.embedding(x)
 
-        if attach_embedding!=None:
-            out=torch.cat([attach_embedding,out])
+            embedded_orig=embedded
 
-        lstm_outs, (h_t, h_c) = self.lstm(out)
-        # lstm_outs 所有token经过lstm后的输出
-        #   shape: (batch_size, pad_size, 2（双向）*hidden_size)=(128, 32, 2*128)
-        #   128句为一个batch，每句话有32个token，每个token对应的输出为一个长度为2（双向）*128的vec
-        #
-        # ht 最后一个token处理完之后，所有hidden layer的状态
-        #   shape: (2（双向）*num_layers, batch_size, hidden_size)=(2*2, 128, 128)
-        #   双向，前向后向各2层，一共4层，每一层的输出为一个长度为*128的vec
-        #
-        # hc 最后一个token处理完之后，所有cell的状态
-        
-        out=lstm_outs[:, -1, :]# 句子最后时刻的输出，作为句子的vec
-        
-        # 注：ht中包含了lstm_outs中句子最后时刻的输出
-        
-        out = self.full_connect(out)  
-        
-        return out, embedded
-    
-    # def forward(self, seq_tensors, seq_lengths):
-        
-    #     embedded_seq_tensors = self.embedding(seq_tensors)
-    #     packed_input = pack_padded_sequence(embedded_seq_tensors, seq_lengths.cpu().numpy(), batch_first=True)
-    #     # out = nn.utils.rnn.pack_padded_sequence(out, seq_len, batch_first=True)
-        
-    #     packed_output, (ht, ct) = self.lstm(packed_input)
-    #     # out, (hn, _) = self.lstm(out)
-        
-    #     # output, input_sizes = pad_packed_sequence(packed_output, batch_first=True)
-    #     out = torch.cat((ht[2], ht[3]), -1)
-    #     out = self.full_connect(out)
+            if attach_embedding!=None:
+                embedded=torch.cat([attach_embedding,embedded])
 
-    #     return out
+            lstm_outs, (h_t, h_c) = self.lstm(embedded)
+            out = lstm_outs[:, -1, :]# 句子最后时刻的输出，作为句子的vec
+            out = self.full_connect(out)  
+            
+            return out, embedded_orig
+        
+        else:
+            # 只有在大批量训练的时候才会用到
+            # x和seq_lengths是text_to_id_sequence_with_padding出来的seq_tensor,seq_lengths
+            embedded_seq_tensors = self.embedding(x)
+            packed_input = pack_padded_sequence(embedded_seq_tensors, seq_lengths.cpu().numpy(), batch_first=True)
+            # out = nn.utils.rnn.pack_padded_sequence(out, seq_len, batch_first=True)
+            
+            packed_output, (ht, ct) = self.lstm(packed_input)
+            
+            # output, input_sizes = pad_packed_sequence(packed_output, batch_first=True)
+            out = torch.cat((ht[2], ht[3]), -1)
+            out = self.full_connect(out)
+
+            return out
+        
 
 class GenNet(nn.Module):
     def __init__(self):
         super().__init__()
-        # 10 -> 128
+        # 20 -> 256
         self.full_connect = nn.Linear(OUT_DIM, HIDDEN_DIM)
-        # 128 -> 128
+        # 256 -> 256
         self.lstm = nn.LSTM(HIDDEN_DIM, HIDDEN_DIM, LAYERS, batch_first=True, dropout=DROPOUT)
-        # 128 -> 300
+        # 256 -> 300
         self.full_connect2 = nn.Linear(HIDDEN_DIM, EMBED_DIM)
     
     def forward(self, seq_tensors, seq_lengths):
