@@ -106,23 +106,23 @@ def init_network(model, method='xavier', exclude='embedding', seed=123):
 def load_corpus(name, test_size=0.2):
 
     train_pipe=[]
-    test_set={}
-    tag_list=[]
+    train_dict={}
+    test_dict={}
     for tag in os.listdir("./%s"%name):
         
         with open("./%s/%s"%(name,tag),"r",encoding='utf-8') as f:
+            print("load %s"%tag)
             text=[_.strip() for _ in f.read().split("===") if _.strip()]
             if len(text)>1:
                 
-                train,test=train_test_split(text,test_size=test_size)
+                train,test = train_test_split(text,test_size=test_size)
                 train_pipe.extend([(_,tag) for _ in train])
-                test_set[tag]=test
-        
-                tag_list.append(tag)
+                train_dict[tag]=train
+                test_dict[tag]=test
 
     random.shuffle(train_pipe)
     
-    return train_pipe, test_set, tag_list
+    return train_pipe, train_dict, test_dict
 
 def pre_process(content):
     def is_chinese(uchar):

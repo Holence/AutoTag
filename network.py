@@ -6,7 +6,7 @@ EMBED_DIM=300                   # word vec的维度
 HIDDEN_DIM=256                  # lstm隐藏层的向量维度
 LAYERS=2                        # lstm层数
 DROPOUT=0.5                     
-OUT_DIM=20                      # 输出空间的维度
+TAG_VEC_DIM=32                      # 输出空间的维度
 
 class VecNet(nn.Module):
     def __init__(self, word_num, word_embeddings=None):
@@ -18,7 +18,7 @@ class VecNet(nn.Module):
             self.embedding = nn.Embedding.from_pretrained(word_embeddings, freeze=False)
         
         self.lstm = nn.LSTM(EMBED_DIM, HIDDEN_DIM, LAYERS, bidirectional=True, batch_first=True, dropout=DROPOUT)
-        self.full_connect = nn.Linear(HIDDEN_DIM * 2, OUT_DIM)
+        self.full_connect = nn.Linear(HIDDEN_DIM * 2, TAG_VEC_DIM)
 
     def forward(self, x, attach_embedding=None, seq_lengths=None):
 
@@ -38,7 +38,7 @@ class VecNet(nn.Module):
 
             lstm_outs, (h_t, h_c) = self.lstm(embedded)
             out = lstm_outs[:, -1, :]# 句子最后时刻的输出，作为句子的vec
-            out = self.full_connect(out)  
+            out = self.full_connect(out)
             
             return out, embedded_orig
         
@@ -61,17 +61,17 @@ class VecNet(nn.Module):
 class GenNet(nn.Module):
     def __init__(self):
         super().__init__()
-        # 20 -> 256
-        self.full_connect = nn.Linear(OUT_DIM, HIDDEN_DIM)
+        # TAG_VEC_DIM -> 256
+        self.full_connect = nn.Linear(TAG_VEC_DIM, HIDDEN_DIM)
         # 256 -> 256
         self.lstm = nn.LSTM(HIDDEN_DIM, HIDDEN_DIM, LAYERS, batch_first=True, dropout=DROPOUT)
         # 256 -> 300
         self.full_connect2 = nn.Linear(HIDDEN_DIM, EMBED_DIM)
     
-    def forward(self, seq_tensors, seq_lengths):
+    def forward(self, tag_vecs, seq_lengths):
         
         seq_out=[]
-        for vec,times in zip(seq_tensors,seq_lengths):
+        for vec,times in zip(tag_vecs, seq_lengths):
             result=[]
 
             out=self.full_connect(vec).reshape(1,1,-1)
