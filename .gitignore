@@ -1,4 +1,2 @@
-sgns.zhihu.char
-sgns.zhihu.embed.npz
-sgns.zhihu.wi.pkl
-vec_net_para_init.pt
+lstm_para/
+bert_para/

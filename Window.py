@@ -17,7 +17,7 @@ class Ui_Window(object):
     def setupUi(self, Window):
         if not Window.objectName():
             Window.setObjectName(u"Window")
-        Window.resize(887, 445)
+        Window.resize(931, 535)
         self.horizontalLayout = QHBoxLayout(Window)
         self.horizontalLayout.setObjectName(u"horizontalLayout")
         self.verticalLayout = QVBoxLayout()
@@ -119,6 +119,18 @@ class Ui_Window(object):
 
         self.horizontalLayout_3.addWidget(self.label_acc)
 
+        self.label_4 = QLabel(self.layoutWidget_2)
+        self.label_4.setObjectName(u"label_4")
+
+        self.horizontalLayout_3.addWidget(self.label_4)
+
+        self.spinBox_top = QSpinBox(self.layoutWidget_2)
+        self.spinBox_top.setObjectName(u"spinBox_top")
+        self.spinBox_top.setMinimum(1)
+        self.spinBox_top.setMaximum(999999999)
+
+        self.horizontalLayout_3.addWidget(self.spinBox_top)
+
 
         self.verticalLayout_5.addLayout(self.horizontalLayout_3)
 
@@ -157,12 +169,12 @@ class Ui_Window(object):
 
         self.verticalLayout_3.addWidget(self.pushButton_load_corpus)
 
-        self.pushButton_normal_train = QPushButton(Window)
-        self.pushButton_normal_train.setObjectName(u"pushButton_normal_train")
-        sizePolicy1.setHeightForWidth(self.pushButton_normal_train.sizePolicy().hasHeightForWidth())
-        self.pushButton_normal_train.setSizePolicy(sizePolicy1)
+        self.pushButton_batch_train = QPushButton(Window)
+        self.pushButton_batch_train.setObjectName(u"pushButton_batch_train")
+        sizePolicy1.setHeightForWidth(self.pushButton_batch_train.sizePolicy().hasHeightForWidth())
+        self.pushButton_batch_train.setSizePolicy(sizePolicy1)
 
-        self.verticalLayout_3.addWidget(self.pushButton_normal_train)
+        self.verticalLayout_3.addWidget(self.pushButton_batch_train)
 
         self.pushButton_continual_train = QPushButton(Window)
         self.pushButton_continual_train.setObjectName(u"pushButton_continual_train")
@@ -219,9 +231,10 @@ class Ui_Window(object):
         self.label.setText(QCoreApplication.translate("Window", u"Predict Text", None))
         self.label_2.setText(QCoreApplication.translate("Window", u"Result", None))
         self.label_acc.setText("")
+        self.label_4.setText(QCoreApplication.translate("Window", u"Accept Top", None))
         self.pushButton_pred.setText(QCoreApplication.translate("Window", u" Predict ", None))
         self.pushButton_load_corpus.setText(QCoreApplication.translate("Window", u" Load Corpus ", None))
-        self.pushButton_normal_train.setText(QCoreApplication.translate("Window", u" Normal Train ", None))
+        self.pushButton_batch_train.setText(QCoreApplication.translate("Window", u" Batch Train ", None))
         self.pushButton_continual_train.setText(QCoreApplication.translate("Window", u" Continual Train ", None))
         self.pushButton_plot.setText(QCoreApplication.translate("Window", u" Plot ", None))
         self.pushButton_plot2D.setText(QCoreApplication.translate("Window", u" Plot 2D ", None))

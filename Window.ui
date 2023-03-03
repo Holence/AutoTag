@@ -6,8 +6,8 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>887</width>
-    <height>445</height>
+    <width>931</width>
+    <height>535</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -136,6 +136,23 @@
              </property>
             </widget>
            </item>
+           <item>
+            <widget class="QLabel" name="label_4">
+             <property name="text">
+              <string>Accept Top</string>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <widget class="QSpinBox" name="spinBox_top">
+             <property name="minimum">
+              <number>1</number>
+             </property>
+             <property name="maximum">
+              <number>999999999</number>
+             </property>
+            </widget>
+           </item>
           </layout>
          </item>
          <item>
@@ -202,7 +219,7 @@
       </widget>
      </item>
      <item>
-      <widget class="QPushButton" name="pushButton_normal_train">
+      <widget class="QPushButton" name="pushButton_batch_train">
        <property name="sizePolicy">
         <sizepolicy hsizetype="Preferred" vsizetype="Fixed">
          <horstretch>0</horstretch>
@@ -210,7 +227,7 @@
         </sizepolicy>
        </property>
        <property name="text">
-        <string> Normal Train </string>
+        <string> Batch Train </string>
        </property>
       </widget>
      </item>

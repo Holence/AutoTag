@@ -7,9 +7,9 @@ from tqdm import tqdm
 import numpy as np
 import re
 
-WORD_VEC_RAW_FILE="sgns.zhihu.char"
-WORD_ID_DICT_FILE="sgns.zhihu.wi.pkl"
-WORD_EMBED_FILE="sgns.zhihu.embed.npz"
+WORD_VEC_RAW_FILE="lstm_para/sgns.zhihu.char"
+WORD_ID_DICT_FILE="lstm_para/sgns.zhihu.wi.pkl"
+WORD_EMBED_FILE="lstm_para/sgns.zhihu.embed.npz"
 
 def generateWordIdDict():
     """
@@ -104,6 +104,22 @@ def init_network(model, method='xavier', exclude='embedding', seed=123):
 
 
 def load_corpus(name, test_size=0.2):
+    # train_pipe
+    # [("sentence","tag1"), ..., ("sentence","tag1"), ..., ("sentence","tag10")]
+    
+    # train_dict
+    # {
+    #   "tag1": ["sentence", ..., "sentence"]
+    #    ...
+    #   "tag10": ["sentence", ..., "sentence"]
+    # }
+    
+    # test_dict
+    # {
+    #   "tag1": ["sentence", ..., "sentence"]
+    #    ...
+    #   "tag10": ["sentence", ..., "sentence"]
+    # }
 
     train_pipe=[]
     train_dict={}
@@ -137,3 +153,13 @@ def pre_process(content):
     #         content_str = content_str + ｉ
     content_str = re.sub(r'[^\w\s]','',content)
     return content_str
+
+def calc_target_offset(orgin_vec, output_vec, times, forward=True):
+    TARGET_VEC_INIT_DEIVATION=0.3
+    TARGET_VEC_DECAY_RATE=0.8
+
+    offset=(output_vec-orgin_vec)*TARGET_VEC_INIT_DEIVATION*(TARGET_VEC_DECAY_RATE**times)
+    if forward:
+        return offset
+    else:
+        return -offset
