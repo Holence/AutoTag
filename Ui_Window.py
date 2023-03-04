@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 
 ################################################################################
-## Form generated from reading UI file 'Window.ui'
+## Form generated from reading UI file 'Ui_Window.ui'
 ##
 ## Created by: Qt User Interface Compiler version 5.15.2
 ##
@@ -183,6 +183,13 @@ class Ui_Window(object):
 
         self.verticalLayout_3.addWidget(self.pushButton_continual_train)
 
+        self.pushButton_continual_train2 = QPushButton(Window)
+        self.pushButton_continual_train2.setObjectName(u"pushButton_continual_train2")
+        sizePolicy1.setHeightForWidth(self.pushButton_continual_train2.sizePolicy().hasHeightForWidth())
+        self.pushButton_continual_train2.setSizePolicy(sizePolicy1)
+
+        self.verticalLayout_3.addWidget(self.pushButton_continual_train2)
+
         self.pushButton_plot = QPushButton(Window)
         self.pushButton_plot.setObjectName(u"pushButton_plot")
         sizePolicy1.setHeightForWidth(self.pushButton_plot.sizePolicy().hasHeightForWidth())
@@ -236,6 +243,8 @@ class Ui_Window(object):
         self.pushButton_load_corpus.setText(QCoreApplication.translate("Window", u" Load Corpus ", None))
         self.pushButton_batch_train.setText(QCoreApplication.translate("Window", u" Batch Train ", None))
         self.pushButton_continual_train.setText(QCoreApplication.translate("Window", u" Continual Train ", None))
+        self.pushButton_continual_train2.setText(QCoreApplication.translate("Window", u"Continual Train\n"
+"without Gen", None))
         self.pushButton_plot.setText(QCoreApplication.translate("Window", u" Plot ", None))
         self.pushButton_plot2D.setText(QCoreApplication.translate("Window", u" Plot 2D ", None))
         self.pushButton_eval.setText(QCoreApplication.translate("Window", u" Evaluate ", None))

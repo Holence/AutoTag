@@ -1,6 +1,5 @@
 from utils import *
 import torch
-import torch.nn as nn
 from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence
 import jieba
 
@@ -10,17 +9,19 @@ LAYERS=2                        # lstm层数
 DROPOUT=0.5                     
 TAG_VEC_DIM=32                      # 输出空间的维度
 
-class VecNet(nn.Module):
+TRAIN_ALONG=10
+
+class VecNet(torch.nn.Module):
     def __init__(self, word_num, word_embeddings=None):
         super(VecNet, self).__init__()
         
         if word_embeddings==None:
-            self.embedding = nn.Embedding(word_num, EMBED_DIM) # freeze=False
+            self.embedding = torch.nn.Embedding(word_num, EMBED_DIM) # freeze=False
         else:
-            self.embedding = nn.Embedding.from_pretrained(word_embeddings, freeze=False)
+            self.embedding = torch.nn.Embedding.from_pretrained(word_embeddings, freeze=False)
         
-        self.lstm = nn.LSTM(EMBED_DIM, HIDDEN_DIM, LAYERS, bidirectional=True, batch_first=True, dropout=DROPOUT)
-        self.full_connect = nn.Linear(HIDDEN_DIM * 2, TAG_VEC_DIM)
+        self.lstm = torch.nn.LSTM(EMBED_DIM, HIDDEN_DIM, LAYERS, bidirectional=True, batch_first=True, dropout=DROPOUT)
+        self.full_connect = torch.nn.Linear(HIDDEN_DIM * 2, TAG_VEC_DIM)
 
     def forward(self, x, attach_embedding=None, seq_lengths=None):
 
@@ -59,15 +60,15 @@ class VecNet(nn.Module):
 
             return out
         
-class GenNet(nn.Module):
+class GenNet(torch.nn.Module):
     def __init__(self):
         super().__init__()
         # TAG_VEC_DIM -> 256
-        self.full_connect = nn.Linear(TAG_VEC_DIM, HIDDEN_DIM)
+        self.full_connect = torch.nn.Linear(TAG_VEC_DIM, HIDDEN_DIM)
         # 256 -> 256
-        self.lstm = nn.LSTM(HIDDEN_DIM, HIDDEN_DIM, LAYERS, batch_first=True, dropout=DROPOUT)
+        self.lstm = torch.nn.LSTM(HIDDEN_DIM, HIDDEN_DIM, LAYERS, batch_first=True, dropout=DROPOUT)
         # 256 -> 300
-        self.full_connect2 = nn.Linear(HIDDEN_DIM, EMBED_DIM)
+        self.full_connect2 = torch.nn.Linear(HIDDEN_DIM, EMBED_DIM)
     
     def forward(self, tag_vecs, seq_lengths):
         
@@ -96,7 +97,7 @@ class GenNet(nn.Module):
         
         return seq_out
 
-class LSTM():
+class Model():
 
     VEC_NET_LR=0.0005
     GEN_NET_LR=0.0005
@@ -184,7 +185,7 @@ class LSTM():
                 self.acc_dict[tag+"_train"]=[]
     
     def loadCorpus(self):
-        self.train_pipe, self.train_dict, self.test_dict=load_corpus("corpus", 0.5)
+        self.train_pipe, self.train_dict, self.test_dict=load_corpus("corpus", 0.2)
 
     def save(self):
         torch.save(self.vec_net.state_dict(), "lstm_para/vec_net_para.pt")
@@ -192,7 +193,7 @@ class LSTM():
         torch.save(self.tag_dict, "lstm_para/tag_dict.pt")
     
     def text_to_id_sequence_with_padding(self,text_list):
-        "转换成word_id，padding，再排序"
+        # "转换成word_id，padding，再排序"
 
         # 生成id序列，这里是形状如[[...], [...], ...]的python的列表
         id_seqs=[]
@@ -226,7 +227,7 @@ class LSTM():
         return token_id_seq,seq_lengths,perm_idx
 
     def text_to_id_sequence(self,text):
-        "转换成id sequence"
+        # "转换成id sequence"
         
         sequence=[]
         
@@ -241,7 +242,7 @@ class LSTM():
         return token_id_seq
 
     def forward(self, current_text, current_tag):
-        "单样本正向训练"
+        # "单样本正向训练，生成向量进行陪练"
 
         current_text=pre_process(current_text)
 
@@ -289,10 +290,9 @@ class LSTM():
 
             # 堆叠其他tag的vec
             other_tag_vecs=[]
-            for tag,value in random.sample(list(self.tag_dict.items()), min(len(self.tag_dict),10) ): # 随机取10个来伴随训练，太多了的话内存不够用
+            for tag,value in random.sample(list(self.tag_dict.items()), min(len(self.tag_dict),TRAIN_ALONG) ): # 随机取TRAIN_ALONG个来伴随训练，太多了的话内存不够用
                 if tag!=current_tag:
-                    other_vec=value["vec"]
-                    other_tag_vecs.append(other_vec)
+                    other_tag_vecs.append(value["vec"])
             
             token_id_seq=self.text_to_id_sequence(current_text)
             
@@ -379,6 +379,53 @@ class LSTM():
                 loss.backward()
                 self.gen_net_optimizer.step()
     
+
+    def forward_without_generator(self, current_text, current_tag):
+        # "单样本正向训练，不生成向量进行陪练"
+
+        current_text=pre_process(current_text)
+
+        # 如果tag_dict中没有该tag，就用网络的输出作为该tag的初始tag_vec
+        if type(self.tag_dict.get(current_tag))==type(None):
+            # 把sentence转换成token的id序列
+            token_id_seq=self.text_to_id_sequence(current_text)
+            # [token的个数]
+            seq_lengths=[token_id_seq[0,...].shape[0]]
+            
+            # -------------------------------------
+            
+            self.vec_net.eval()
+            with torch.no_grad():
+                # 输入id sequence的id_seq(1xn)
+                # 先用vec_net预测，输出tag domain的向量tag_vec(1 x TAG_VEC_DIM)，以及embed的vec(nx300)（用来之后训练gen_net
+                tag_vec, embedded_sentence=self.vec_net(token_id_seq)
+
+            # 把tag_vec存储到tag_dict中
+            self.tag_dict[current_tag]={
+                "vec":tag_vec.detach().cpu()[0,...], # 这里一定要detach掉，不然在计算loss之后，loss.backward会出错
+                "time":1
+            }
+
+        else:
+
+            token_id_seq=self.text_to_id_sequence(current_text)
+            
+            self.vec_net.train()
+            output_tag_vec, _=self.vec_net(token_id_seq)
+            
+            orig_tag_vec=self.tag_dict[current_tag]["vec"].reshape(1,-1)
+            
+            # 取递减偏离的一点
+            target_vec = orig_tag_vec + calc_target_offset(orig_tag_vec, output_tag_vec.detach().cpu(), self.tag_dict[current_tag]["time"])
+            
+            self.tag_dict[current_tag]["vec"]=target_vec[-1,...]
+            self.tag_dict[current_tag]["time"]+=1
+
+            self.vec_net.zero_grad()
+            loss=self.vec_net_criterion(output_tag_vec, target_vec.to(self.device))
+            loss.backward()
+            self.vec_net_optimizer.step()
+    
     def backward(self, current_text, current_tag):
 
         # 这里和forward的训练方法大致一样，区别是：target_vecs是反方向的，并且不包括对gen_net的训练
@@ -386,14 +433,13 @@ class LSTM():
         # -------------------------------------
         # 先用gen_net预测生成current_tag之外的其他tag的所对应的embedding作为训练vec_net的陪练
         # 以应对Catastrophic Forgetting
-        
+        current_text=pre_process(current_text)
 
         # 堆叠其他tag的vec
         other_tag_vecs=[]
-        for tag,value in random.sample(list(self.tag_dict.items()), min(len(self.tag_dict),10) ): # 随机取10个来伴随训练，太多了的话内存不够用
+        for tag,value in random.sample(list(self.tag_dict.items()), min(len(self.tag_dict),TRAIN_ALONG) ): # 随机取TRAIN_ALONG个来伴随训练，太多了的话内存不够用
             if tag!=current_tag:
-                other_vec=value["vec"]
-                other_tag_vecs.append(other_vec)
+                other_tag_vecs.append(value["vec"])
         
         token_id_seq=self.text_to_id_sequence(current_text)
         
@@ -404,7 +450,7 @@ class LSTM():
             orig_tag_vec=self.tag_dict[current_tag]["vec"].reshape(1,-1)
             
             # 取递减偏离的一点
-            target_vec = orig_tag_vec + calc_target_offset(orig_tag_vec, output_tag_vec.detach().cpu(), self.tag_dict[current_tag]["time"])
+            target_vec = orig_tag_vec - calc_target_offset(orig_tag_vec, output_tag_vec.detach().cpu(), self.tag_dict[current_tag]["time"])
             
             self.tag_dict[current_tag]["vec"]=target_vec[-1,...]
             if self.tag_dict[current_tag]["time"]!=1:
@@ -447,7 +493,7 @@ class LSTM():
             
             offset = calc_target_offset(orig_tag_vec, output_tag_vecs[-1,...].detach().cpu().reshape(1,-1), self.tag_dict[current_tag]["time"])
             target_vecs = torch.cat( [other_tag_vecs + offset, orig_tag_vec - offset] )
-            self.tag_dict[current_tag]["vec"]=target_vec.reshape(-1)
+            self.tag_dict[current_tag]["vec"]=(orig_tag_vec - offset).reshape(-1)
             
             if self.tag_dict[current_tag]["time"]!=1:
                 self.tag_dict[current_tag]["time"]-=0.5
@@ -466,7 +512,7 @@ class LSTM():
             for tag, values in self.train_dict.items():
 
                 sample_text=values[random.randint(0,len(values)-1)]
-
+                sample_text=pre_process(sample_text)
                 if self.tag_dict.get(tag)==None:
                     
                     # 生成vec序列，这里是形状如[[...], [...], ...]的python的列表
@@ -481,21 +527,18 @@ class LSTM():
                         "time":1
                     }
         
-        random.shuffle(self.train_pipe)
-        
         # 开始以batch_size为一个batch，对全体训练集进行小批量训练
+        self.vec_net.train()
         batch_size=32
         o=0
         while o<len(self.train_pipe):
             
-            self.vec_net.train()
-
             batch_texts=[]
             target_vec=[]
             for i in self.train_pipe[o:o+batch_size]:
                 text=i[0]
                 tag=i[1]
-
+                text=pre_process(text)
                 batch_texts.append(text)
                 target_vec.append(self.tag_dict[tag]["vec"])
 
@@ -515,6 +558,7 @@ class LSTM():
             self.vec_net.zero_grad()
             loss=self.vec_net_criterion(output_vecs, center.to(self.device))
             self.loss_dict["VecNet Batch Train Loss"].append(loss.tolist())
+            print(loss)
             loss.backward()
             self.vec_net_optimizer.step()
             o+=batch_size
