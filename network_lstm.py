@@ -16,9 +16,9 @@ class VecNet(torch.nn.Module):
         super(VecNet, self).__init__()
         
         if word_embeddings==None:
-            self.embedding = torch.nn.Embedding(word_num, EMBED_DIM) # freeze=False
+            self.embedding = torch.nn.Embedding(word_num, EMBED_DIM)
         else:
-            self.embedding = torch.nn.Embedding.from_pretrained(word_embeddings, freeze=False)
+            self.embedding = torch.nn.Embedding.from_pretrained(word_embeddings, freeze=True)
         
         self.lstm = torch.nn.LSTM(EMBED_DIM, HIDDEN_DIM, LAYERS, bidirectional=True, batch_first=True, dropout=DROPOUT)
         self.full_connect = torch.nn.Linear(HIDDEN_DIM * 2, TAG_VEC_DIM)
@@ -26,17 +26,19 @@ class VecNet(torch.nn.Module):
     def forward(self, x, attach_embedding=None, seq_lengths=None):
 
         if seq_lengths==None:
-            # x是真实句子转换出的word_id
-            # x = [word_vec1, word_vec2, ...]
+            # x是真实句子转换出的token_id
+            # x = [token_id1, token_id2, ...]
             # 
             # 在训练新样本时为了防止对旧tag的遗忘，要用到gen_net生成的embeddings，这里由attach_embedding传入
-            # 因为attach_embedding不是word_id，所以它进来的时候要跳过embedding层
-        
+            # 因为attach_embedding不是token_id，所以它进来的时候要跳过embedding层
+
+            # pytorch传入Embedding层不用one-hot的token表示法，直接用id的序列就行了
             embedded = self.embedding(x)
 
             embedded_orig=embedded
 
             if attach_embedding!=None:
+                # current text的embedding放在最后
                 embedded=torch.cat([attach_embedding,embedded])
 
             lstm_outs, (h_t, h_c) = self.lstm(embedded)
@@ -107,13 +109,13 @@ class Model():
         self.device=torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
         print("Device:",self.device)
 
-        # 导入或生成word_id_dict
+        # 导入或生成token_id_dict
         # {
         #     "<PAD>": 0,
         #     "啊": 1,
         #     "<UNK>": ...
         # }
-        self.word_id_dict=load_WordIdDict()
+        self.token_id_dict=load_WordIdDict()
 
         # VecNet
         if not os.path.exists("lstm_para/vec_net_para_init.pt"):
@@ -124,10 +126,10 @@ class Model():
             #     [1x300 from sgns.zhihu.char],
             #     [1x300 random],
             # ]
-            word_embeddings=load_WordEmbeddings(self.word_id_dict)
+            word_embeddings=load_WordEmbeddings(self.token_id_dict)
 
             # 创建VecNet，并把word_embeddings存入VecNet的embedding层
-            self.vec_net=VecNet(len(self.word_id_dict), word_embeddings)
+            self.vec_net=VecNet(len(self.token_id_dict), word_embeddings)
             self.vec_net.to(self.device)
 
             # 初始化VecNet（除去embedding层，初始化LSTM、Linear Layer的参数）
@@ -140,7 +142,7 @@ class Model():
             torch.save(self.vec_net.state_dict(), "lstm_para/vec_net_para_init.pt")
         else:
             
-            self.vec_net=VecNet(len(self.word_id_dict))
+            self.vec_net=VecNet(len(self.token_id_dict))
             try:
                 self.vec_net.load_state_dict(torch.load("lstm_para/vec_net_para.pt"))
             except:
@@ -193,7 +195,7 @@ class Model():
         torch.save(self.tag_dict, "lstm_para/tag_dict.pt")
     
     def text_to_id_sequence_with_padding(self,text_list):
-        # "转换成word_id，padding，再排序"
+        # "转换成token_id，padding，再排序"
 
         # 生成id序列，这里是形状如[[...], [...], ...]的python的列表
         id_seqs=[]
@@ -201,7 +203,7 @@ class Model():
             sequence=[]
             for i in jieba.cut(t,cut_all=False):
                 if i.strip():
-                    id=self.word_id_dict.get(i, self.word_id_dict.get("<UNK>"))
+                    id=self.token_id_dict.get(i, self.token_id_dict.get("<UNK>"))
                     sequence.append(id)
             id_seqs.append(sequence)
         
@@ -233,7 +235,7 @@ class Model():
         
         for i in jieba.cut(text,cut_all=False):
             if i.strip():
-                id=self.word_id_dict.get(i, self.word_id_dict.get("<UNK>"))
+                id=self.token_id_dict.get(i, self.token_id_dict.get("<UNK>"))
                 sequence.append(id)
         
         token_id_seq=torch.LongTensor(sequence).reshape(1,-1).to(self.device)

@@ -12,3 +12,10 @@ Continual Learning Model for Multi-class Text Classification base on Replay Meth
 
 - [Chinese-Word-Vectors](https://github.com/Embedding/Chinese-Word-Vectors)
 - [Chinese-BERT-wwm](https://github.com/ymcui/Chinese-BERT-wwm)
+
+## ToDo
+
+- lstm输出的向量层扩大些，干脆384？
+- lstm的gpu\cpu
+- lstm用c作为输出？
+- lstm的embedding怎么不是freezed？

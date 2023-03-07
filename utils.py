@@ -8,7 +8,7 @@ import numpy as np
 import re
 
 WORD_VEC_RAW_FILE="lstm_para/sgns.zhihu.char"
-WORD_ID_DICT_FILE="lstm_para/sgns.zhihu.wi.pkl"
+TOKEN_ID_DICT_FILE="lstm_para/sgns.zhihu.tokenid.pkl"
 WORD_EMBED_FILE="lstm_para/sgns.zhihu.embed.npz"
 
 def generateWordIdDict():
@@ -19,27 +19,27 @@ def generateWordIdDict():
         "<UNK>":2,
     }
     """
-    word_id_dict={}
+    token_id_dict={}
     
     # '<PAD>' id为0
-    word_id_dict.update({"<PAD>": len(word_id_dict)})
+    token_id_dict.update({"<PAD>": len(token_id_dict)})
     
     i=1
     with open("%s"%WORD_VEC_RAW_FILE, 'r', encoding='utf-8') as f:
         for line in tqdm(f.readlines()[1:]):
             word = line.strip().split(" ")[0]
             # 竟然还有重复的……
-            if word_id_dict.get(word)==None:
-                word_id_dict[word]=i
+            if token_id_dict.get(word)==None:
+                token_id_dict[word]=i
                 i+=1
     
     # 最后加上'<UNK>'
-    word_id_dict.update({"<UNK>": len(word_id_dict)})
+    token_id_dict.update({"<UNK>": len(token_id_dict)})
     
-    with open(WORD_ID_DICT_FILE,'wb') as f:
-        pickle.dump(word_id_dict,f)
+    with open(TOKEN_ID_DICT_FILE,'wb') as f:
+        pickle.dump(token_id_dict,f)
 
-def generateWordVecDict(word_to_id):
+def generateWordEmbedding(word_to_id):
     """
     {
         0: np.array([...]),
@@ -63,21 +63,21 @@ def generateWordVecDict(word_to_id):
     np.savez_compressed(WORD_EMBED_FILE, embeddings=word_embeddings)
 
 def load_WordIdDict():
-    if not os.path.exists(WORD_ID_DICT_FILE):
-        print("Generating %s from %s"%(WORD_ID_DICT_FILE,WORD_VEC_RAW_FILE))
+    if not os.path.exists(TOKEN_ID_DICT_FILE):
+        print("Generating %s from %s"%(TOKEN_ID_DICT_FILE,WORD_VEC_RAW_FILE))
         generateWordIdDict()
     else:
-        print("Found word_id_dict in %s"%WORD_ID_DICT_FILE)
+        print("Found token_id_dict in %s"%TOKEN_ID_DICT_FILE)
     
-    with open(WORD_ID_DICT_FILE,'rb') as f:
-        word_id_dict=pickle.load(f)
+    with open(TOKEN_ID_DICT_FILE,'rb') as f:
+        token_id_dict=pickle.load(f)
     
-    return word_id_dict
+    return token_id_dict
 
-def load_WordEmbeddings(word_id_dict):
+def load_WordEmbeddings(token_id_dict):
     if not os.path.exists(WORD_EMBED_FILE):
         print("Generating %s from %s"%(WORD_EMBED_FILE,WORD_VEC_RAW_FILE))
-        generateWordVecDict(word_id_dict)
+        generateWordEmbedding(token_id_dict)
     else:
         print("Found word_embeddings in %s"%WORD_EMBED_FILE)
     
