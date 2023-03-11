@@ -11,7 +11,8 @@ app.setApplicationVersion("1.0.0.0")
 app.setLoginEnable(False)
 
 session=MainWindow(app)
-session.setModel("BERT")
+# session.setModel("BERT")
+session.setModel("LSTM")
 app.setMainSession(session)
 
 seed_torch(114514)

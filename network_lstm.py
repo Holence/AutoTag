@@ -4,10 +4,10 @@ from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence
 import jieba
 
 EMBED_DIM=300                   # word vec的维度
-HIDDEN_DIM=256                  # lstm隐藏层的向量维度
+HIDDEN_DIM=768                  # lstm隐藏层的向量维度
 LAYERS=2                        # lstm层数
 DROPOUT=0.5                     
-TAG_VEC_DIM=32                      # 输出空间的维度
+TAG_VEC_DIM=384                      # 输出空间的维度
 
 TRAIN_ALONG=10
 
@@ -41,12 +41,48 @@ class VecNet(torch.nn.Module):
                 # current text的embedding放在最后
                 embedded=torch.cat([attach_embedding,embedded])
 
-            lstm_outs, (h_t, h_c) = self.lstm(embedded)
-            out = lstm_outs[:, -1, :]# 句子最后时刻的输出，作为句子的vec
-            out = self.full_connect(out)
+            # 原始的版本
+            # output, (h_t, h_c) = self.lstm(embedded)
+            # output = output[:, -1, :]# 句子最后时刻的输出，作为句子的vec
+            # output = self.full_connect(output)
+            # return output, embedded_orig
+
+            # torch的BiLSTM的output有问题
+            # https://github.com/yunjey/pytorch-tutorial/issues/149
+            # 可以用下面的代码看一下
+            # lstm = torch.nn.LSTM(10, 7, 2, batch_first=True, bidirectional=True)
+            # input=torch.randn([6, 10])
+            # output,(h,c)=lstm(input)
+            # print(output[-1])
+            # print(h)
+            # output[-1]包含的是最后一个token处正向和负向的输出，而output[0]包含的是第一个token处正向和负向的输出
+            # 应该是最后一个token处的正向输出+第一个token处的负向输出
+
             
-            return out, embedded_orig
-        
+            # 实验发现，按照下面这样修改后，精度大幅提升
+            _, (h_n, c_n) = self.lstm(embedded)
+            
+            if h_n.shape[1]>1:
+                # batch
+                forward=[]
+                for i in h_n[-2]:
+                    forward.append(i)
+                reverse=[]
+                for i in h_n[-1]:
+                    reverse.append(i)
+                output=[]
+                for i,j in zip(forward,reverse):
+                    output.append( torch.cat((i,j)) )
+                output=torch.stack(output)
+                
+            else:
+                # single
+                output = torch.cat((h_n[-2, 0], h_n[-1, 0])).reshape(1, -1)
+            
+            output = self.full_connect(output)
+            
+            return output, embedded_orig
+
         else:
             # 只有在batch_train的时候才会用到
             # x和seq_lengths是text_to_id_sequence_with_padding出来的seq_tensor,seq_lengths
@@ -339,8 +375,9 @@ class Model():
                 
                 try:
                     output_tag_vecs, embedded_sentence=self.vec_net(token_id_seq, attach_embedding=attach_embedding.detach())
-                except:
+                except Exception as e:
                     print("ERROR occur in .line1")
+                    print(e)
                     print(current_text, current_tag)
                     return
                 
@@ -485,8 +522,9 @@ class Model():
             
             try:
                 output_tag_vecs, _=self.vec_net(token_id_seq,attach_embedding=attach_embedding.detach())
-            except:
+            except Exception as e:
                 print("ERROR occur in .line2")
+                print(e)
                 print(current_text, current_tag)
                 return
             

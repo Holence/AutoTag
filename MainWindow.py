@@ -20,7 +20,7 @@ class MainWindow(DTSession.DTMainSession):
     def initialize(self):
         if self.model_name=="LSTM":
             from network_lstm import Model
-            self.setApplicationName(self.applicationName()+" - LSTM")
+            self.app.setApplicationName(self.app.applicationName()+" - LSTM")
         elif self.model_name=="BERT":
             from network_bert import Model
             self.app.setApplicationName(self.app.applicationName()+" - BERT")

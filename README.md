@@ -15,8 +15,6 @@ Continual Learning Model for Multi-class Text Classification base on Replay Meth
 
 ## ToDo
 
-- lstm双向的诶，输出抽首和尾取平均呗
-- lstm输出的向量层扩大些，干脆384？
+- 检查lstm的batch_train
 - lstm的gpu\cpu
-- lstm用c作为输出？
-- lstm的embedding怎么不是freezed？
+- lstm的embedding是否要freezed
