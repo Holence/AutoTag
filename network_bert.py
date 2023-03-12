@@ -87,12 +87,6 @@ class Model():
             "Generator Continual Single Train Loss":[],
             "Generator Continual Attach Train Loss":[],
         }
-        
-        self.acc_dict={}
-        for tag in self.train_dict:
-            if self.acc_dict.get(tag)==None:
-                self.acc_dict[tag+"_test"]=[]
-                self.acc_dict[tag+"_train"]=[]
     
     def loadCorpus(self):
         self.train_pipe, self.train_dict, self.test_dict=load_corpus("corpus", 0.2)
@@ -109,38 +103,34 @@ class Model():
         return output["pooler_output"]
 
     def forward(self, current_text, current_tag):
-        def train_generator(sentences_vecs):
+        # "单样本正向训练，生成向量进行陪练"
+        
+        def train_generator(sentences_vec):
             self.generator.train()
-                
+            
             output_seq=self.generator(self.tag_dict[current_tag]["vec"].reshape(1,-1))
-            
-            # loss为generator的output_seq和embedded_sentence的差异
-            # 试图让generator输入tag domain的vec，拟合输出embedding domain的vec
             self.generator.zero_grad()
-            
-            loss=self.generator_criterion(output_seq, sentences_vecs)
+            loss=self.generator_criterion(output_seq, sentences_vec)
             loss.backward()
             self.generator_optimizer.step()
             return loss.tolist()
 
-        # "单样本正向训练，生成向量进行陪练"
-
         current_text=pre_process(current_text)
-        sentences_vecs=self.sentences_vectors([current_text])
+        sentences_vec=self.sentences_vectors([current_text])
 
         # 如果tag_dict中没有该tag，就用网络的输出作为该tag的初始tag_vec
         if type(self.tag_dict.get(current_tag))==type(None):
             
             self.classifier.eval()
             with torch.no_grad():
-                classes_vecs=self.classifier(sentences_vecs)
+                classes_vecs=self.classifier(sentences_vec)
             self.tag_dict[current_tag]={
                 "vec":classes_vecs.detach()[0,...],
                 "time":1
             }
             
             # -------------------------------------
-            loss=train_generator(sentences_vecs.detach())
+            loss=train_generator(sentences_vec.detach())
             self.loss_dict["Generator Continual Single Train Loss"].append(loss)
 
         else:
@@ -158,7 +148,7 @@ class Model():
             # 如果没有其他陪练的，就取classifier的输出为TARGET_VEC，取orig_tag_vec与TARGET_VEC的连线上的一点为优化目标
             if other_tag_vecs==[]:
                 self.classifier.train()
-                output_tag_vec=self.classifier(sentences_vecs)
+                output_tag_vec=self.classifier(sentences_vec)
                 
                 orig_tag_vec=self.tag_dict[current_tag]["vec"].reshape(1,-1)
                 
@@ -175,7 +165,7 @@ class Model():
                 self.classifier_optimizer.step()
 
                 # -------------------------------------
-                loss=train_generator(sentences_vecs.detach())
+                loss=train_generator(sentences_vec.detach())
                 self.loss_dict["Generator Continual Single Train Loss"].append(loss)
             else:
                 
@@ -186,7 +176,7 @@ class Model():
                 with torch.no_grad():
                     other_sentences_vecs=self.generator(other_tag_vecs)
 
-                cat_sentences_vecs = torch.cat([other_sentences_vecs, sentences_vecs])
+                cat_sentences_vecs = torch.cat([other_sentences_vecs, sentences_vec])
                 
                 # -------------------------------------
                 # 开始训练classifier
@@ -220,21 +210,21 @@ class Model():
                 self.classifier_optimizer.step()
 
                 # -------------------------------------
-                loss=train_generator(sentences_vecs.detach())
+                loss=train_generator(sentences_vec.detach())
                 self.loss_dict["Generator Continual Attach Train Loss"].append(loss)
 
     def forward_without_generator(self, current_text, current_tag):
         # "单样本正向训练，不带生成向量的陪练"
 
         current_text=pre_process(current_text)
-        sentences_vecs=self.sentences_vectors([current_text])
+        sentences_vec=self.sentences_vectors([current_text])
 
         # 如果tag_dict中没有该tag，就用网络的输出作为该tag的初始tag_vec
         if type(self.tag_dict.get(current_tag))==type(None):
             
             self.classifier.eval()
             with torch.no_grad():
-                classes_vecs=self.classifier(sentences_vecs)
+                classes_vecs=self.classifier(sentences_vec)
             self.tag_dict[current_tag]={
                 "vec":classes_vecs.detach()[0,...],
                 "time":1
@@ -243,7 +233,7 @@ class Model():
         else:
             
             self.classifier.train()
-            output_tag_vec=self.classifier(sentences_vecs)
+            output_tag_vec=self.classifier(sentences_vec)
             
             orig_tag_vec=self.tag_dict[current_tag]["vec"].reshape(1,-1)
             
@@ -255,7 +245,7 @@ class Model():
 
             self.classifier.zero_grad()
             loss=self.classifier_criterion(output_tag_vec, target_vec)
-            self.loss_dict["Classifier Continual Baseline Train Loss"].append(loss)
+            self.loss_dict["Classifier Continual Baseline Train Loss"].append(loss.tolist())
             loss.backward()
             self.classifier_optimizer.step()
     
@@ -267,7 +257,7 @@ class Model():
         # 先用generator预测生成current_tag之外的其他tag的所对应的embedding作为训练classifier的陪练
         # 以应对Catastrophic Forgetting
         current_text=pre_process(current_text)
-        sentences_vecs=self.sentences_vectors([current_text])
+        sentences_vec=self.sentences_vectors([current_text])
 
         # 堆叠其他tag的vec
         other_tag_vecs=[]
@@ -277,7 +267,7 @@ class Model():
         
         if other_tag_vecs==[]:
             self.classifier.train()
-            output_tag_vec=self.classifier(sentences_vecs)
+            output_tag_vec=self.classifier(sentences_vec)
             
             orig_tag_vec=self.tag_dict[current_tag]["vec"].reshape(1,-1)
             
@@ -301,7 +291,7 @@ class Model():
             with torch.no_grad():
                 other_sentences_vecs=self.generator(other_tag_vecs)
 
-            cat_sentences_vecs = torch.cat([other_sentences_vecs, sentences_vecs])
+            cat_sentences_vecs = torch.cat([other_sentences_vecs, sentences_vec])
 
             # -------------------------------------
             # 开始训练classifier
@@ -341,9 +331,9 @@ class Model():
                 if self.tag_dict.get(key)==None:
                     sample_text=value[random.randint(0,len(value)-1)]
                     sample_text=pre_process(sample_text)
-                    sentences_vecs=self.sentences_vectors([sample_text])
+                    sentences_vec=self.sentences_vectors([sample_text])
 
-                    classes_vecs=self.classifier(sentences_vecs)
+                    classes_vecs=self.classifier(sentences_vec)
                     self.tag_dict[key]={
                         "vec":classes_vecs.detach()[0,...],
                         "time":1
@@ -385,12 +375,12 @@ class Model():
             result={}
             with torch.no_grad():
                 inputs=self.sentences_vectors([text])
-                sentences_vecs=self.classifier(inputs)
+                sentences_vec=self.classifier(inputs)
 
                 for tag,value in self.tag_dict.items():
                     # 计算距离
                     vec=value["vec"]
-                    result[tag]=torch.linalg.norm(vec-sentences_vecs).tolist()
+                    result[tag]=torch.linalg.norm(vec-sentences_vec).tolist()
                 result=sorted(result.items(),key=lambda x:x[1])
     
             if top_num==-1:

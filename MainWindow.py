@@ -26,6 +26,13 @@ class MainWindow(DTSession.DTMainSession):
             self.app.setApplicationName(self.app.applicationName()+" - BERT")
 
         self.Model=Model()
+
+        self.acc_dict={}
+        for tag in self.Model.train_dict:
+            if self.acc_dict.get(tag)==None:
+                self.acc_dict[tag+"_test"]=[]
+                self.acc_dict[tag+"_train"]=[]
+        
         super().initialize()
     
     def setModel(self, model_name):
@@ -79,7 +86,7 @@ class MainWindow(DTSession.DTMainSession):
         self.module.textBrowser_res.clear()
         s, train_acc = self.predict_trainset(return_string_and_acc=True)
         self.module.textBrowser_res.append(s)
-        s, test_acc = self.predidct_testset(return_string_and_acc=True)
+        s, test_acc = self.predict_testset(return_string_and_acc=True)
         self.module.textBrowser_res.append(s)
         self.module.label_acc.setText("Train acc: %.2f%%  Test acc: %.2f%%"%(train_acc*100, test_acc*100))
     
@@ -104,14 +111,14 @@ class MainWindow(DTSession.DTMainSession):
         plt.legend(keys2)
 
         plt.figure()
-        for tag in [i for i in self.Model.acc_dict.keys() if "test" in i]:
-            plt.plot(self.Model.acc_dict[tag])
-        plt.legend([i for i in self.Model.acc_dict.keys() if "test" in i])
+        for tag in [i for i in self.acc_dict.keys() if "test" in i]:
+            plt.plot(self.acc_dict[tag])
+        plt.legend([i for i in self.acc_dict.keys() if "test" in i])
         
         plt.figure()
-        for tag in [i for i in self.Model.acc_dict.keys() if "train" in i]:
-            plt.plot(self.Model.acc_dict[tag])
-        plt.legend([i for i in self.Model.acc_dict.keys() if "train" in i])
+        for tag in [i for i in self.acc_dict.keys() if "train" in i]:
+            plt.plot(self.acc_dict[tag])
+        plt.legend([i for i in self.acc_dict.keys() if "train" in i])
 
     def plot2D(self):
         def euclidean(x0, x1):
@@ -297,7 +304,7 @@ class MainWindow(DTSession.DTMainSession):
                     total_correct+=1
                 else:
                     acc-=single_fault
-            self.Model.acc_dict[key+"_train"].append(acc)
+            self.acc_dict[key+"_train"].append(acc)
             s+="Train Prediction for %10s ---- %.2f%%\n"%(key, acc*100)
 
         if return_string_and_acc==True:
@@ -305,7 +312,7 @@ class MainWindow(DTSession.DTMainSession):
         else:
             print(s, total_correct/total)
     
-    def predidct_testset(self, return_string_and_acc=False):
+    def predict_testset(self, return_string_and_acc=False):
         if len(self.Model.tag_dict)==0:
             print("There isn't any tag_vec in tag_dict! Please train first!")
             return
@@ -323,7 +330,7 @@ class MainWindow(DTSession.DTMainSession):
                     total_correct+=1
                 else:
                     acc-=single_fault
-            self.Model.acc_dict[key+"_test"].append(acc)
+            self.acc_dict[key+"_test"].append(acc)
             s+="Test Prediction for %10s ---- %.2f%%\n"%(key, acc*100)
         
         if return_string_and_acc==True:

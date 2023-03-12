@@ -1,6 +1,6 @@
 from utils import *
 import torch
-from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence
+from torch.nn.utils.rnn import pack_padded_sequence
 import jieba
 
 EMBED_DIM=300                   # word vec的维度
@@ -194,12 +194,6 @@ class Model():
             "GenNet Continual Single Train Loss":[],
             "GenNet Continual Attach Train Loss":[],
         }
-        
-        self.acc_dict={}
-        for tag in self.train_dict:
-            if self.acc_dict.get(tag)==None:
-                self.acc_dict[tag+"_test"]=[]
-                self.acc_dict[tag+"_train"]=[]
     
     def loadCorpus(self):
         self.train_pipe, self.train_dict, self.test_dict=load_corpus("corpus", 0.2)
