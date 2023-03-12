@@ -99,7 +99,7 @@ class Model():
         torch.save(self.tag_dict, "bert_para/tag_dict.pt")
     
     def sentences_vectors(self, sentences):
-        inputs=self.tokenizer(sentences, return_tensors="pt", padding=True) #truncation=True
+        inputs=self.tokenizer(sentences, return_tensors="pt", padding=True, truncation=True)
         inputs.to(self.device)
         output=self.bert(**inputs)
         return output["pooler_output"]
