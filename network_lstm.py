@@ -165,7 +165,7 @@ class Model():
         
         # 学习率也应该保存并读取
         self.vec_net_optimizer = torch.optim.Adam(self.vec_net.parameters(), lr=self.VEC_NET_LR)
-        self.vec_net_criterion = torch.nn.MSELoss()
+        self.vec_net_criterion = torch.nn.MSELoss(reduction = 'sum')
         
         # GenNet
         self.gen_net=GenNet()
@@ -177,7 +177,7 @@ class Model():
         
         # 学习率也应该保存并读取
         self.gen_net_optimizer = torch.optim.Adam(self.gen_net.parameters(), lr=self.GEN_NET_LR)
-        self.gen_net_criterion = torch.nn.MSELoss()
+        self.gen_net_criterion = torch.nn.MSELoss(reduction = 'sum')
         
         if os.path.exists("lstm_para/tag_dict.pt"):
             self.tag_dict=torch.load("lstm_para/tag_dict.pt")
@@ -196,7 +196,7 @@ class Model():
         }
     
     def loadCorpus(self):
-        self.train_pipe, self.train_dict, self.test_dict=load_corpus("corpus", 0.2)
+        self.train_pipe, self.train_dict, self.test_dict=load_corpus("corpus", 0.5)
 
     def save(self):
         torch.save(self.vec_net.state_dict(), "lstm_para/vec_net_para.pt")

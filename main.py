@@ -17,6 +17,6 @@ session.setModel("LSTM")
 
 app.setMainSession(session)
 
-set_seed(114514)
+set_seed(86532)
 
 app.run()

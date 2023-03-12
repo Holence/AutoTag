@@ -25,7 +25,7 @@ class Generator(torch.nn.Module):
 class Model():
 
     CLA_LR=0.0005
-    GEN_LR=0.0005
+    GEN_LR=0.05
 
     def __init__(self) -> None:
 
@@ -58,7 +58,7 @@ class Model():
 
         # 学习率也应该保存并读取
         self.classifier_optimizer = torch.optim.Adam(self.classifier.parameters(), lr=self.CLA_LR)
-        self.classifier_criterion = torch.nn.MSELoss()
+        self.classifier_criterion = torch.nn.MSELoss(reduction = 'sum')
         
         # generator
         self.generator=Generator()
@@ -69,13 +69,15 @@ class Model():
         self.generator.to(self.device)
 
         # 学习率也应该保存并读取
-        self.generator_optimizer = torch.optim.Adam(self.generator.parameters(), lr=self.CLA_LR)
-        self.generator_criterion = torch.nn.MSELoss()
+        self.generator_optimizer = torch.optim.Adam(self.generator.parameters(), lr=self.GEN_LR)
+        self.generator_criterion = torch.nn.MSELoss(reduction = 'sum')
         
         if os.path.exists("bert_para/tag_dict.pt"):
             self.tag_dict=torch.load("bert_para/tag_dict.pt")
         else:
             self.tag_dict={}
+        
+        self.sentence_vec_dict={}
         
         self.loadCorpus()
 
@@ -89,7 +91,7 @@ class Model():
         }
     
     def loadCorpus(self):
-        self.train_pipe, self.train_dict, self.test_dict=load_corpus("corpus", 0.2)
+        self.train_pipe, self.train_dict, self.test_dict=load_corpus("corpus", 0.5)
 
     def save(self):
         torch.save(self.classifier.state_dict(), "bert_para/classifier_para.pt")
@@ -105,10 +107,24 @@ class Model():
     def forward(self, current_text, current_tag):
         # "单样本正向训练，生成向量进行陪练"
         
-        def train_generator(sentences_vec):
+        def train_generator():
+            # 堆叠其他tag的sentences_vec
+            select=[]
+            for tag in random.sample(list(self.tag_dict.keys()), min(len(self.tag_dict), TRAIN_ALONG) ): # 随机取TRAIN_ALONG个来伴随训练，太多了的话内存不够用
+                select.append(tag)
+            
+            tag_vecs=[]
+            sentences_vec=[]
+            for tag in select:
+                    tag_vecs.append(self.tag_dict[tag]["vec"])
+                    sentences_vec.append(self.sentence_vec_dict[tag])
+            
+            tag_vecs=torch.stack(tag_vecs)
+            sentences_vec=torch.stack(sentences_vec)
+            
             self.generator.train()
             
-            output_seq=self.generator(self.tag_dict[current_tag]["vec"].reshape(1,-1))
+            output_seq=self.generator(tag_vecs)
             self.generator.zero_grad()
             loss=self.generator_criterion(output_seq, sentences_vec)
             loss.backward()
@@ -117,6 +133,13 @@ class Model():
 
         current_text=pre_process(current_text)
         sentences_vec=self.sentences_vectors([current_text])
+
+        orig_vec=self.sentence_vec_dict.get(current_tag, None)
+        new_vec=sentences_vec[-1,...]
+        if orig_vec==None:
+            self.sentence_vec_dict[current_tag]=new_vec
+        else:
+            self.sentence_vec_dict[current_tag] = orig_vec + calc_target_offset(orig_vec, new_vec, self.tag_dict[current_tag]["time"])
 
         # 如果tag_dict中没有该tag，就用网络的输出作为该tag的初始tag_vec
         if type(self.tag_dict.get(current_tag))==type(None):
@@ -130,7 +153,7 @@ class Model():
             }
             
             # -------------------------------------
-            loss=train_generator(sentences_vec.detach())
+            loss=train_generator()
             self.loss_dict["Generator Continual Single Train Loss"].append(loss)
 
         else:
@@ -165,7 +188,7 @@ class Model():
                 self.classifier_optimizer.step()
 
                 # -------------------------------------
-                loss=train_generator(sentences_vec.detach())
+                loss=train_generator()
                 self.loss_dict["Generator Continual Single Train Loss"].append(loss)
             else:
                 
@@ -210,7 +233,7 @@ class Model():
                 self.classifier_optimizer.step()
 
                 # -------------------------------------
-                loss=train_generator(sentences_vec.detach())
+                loss=train_generator()
                 self.loss_dict["Generator Continual Attach Train Loss"].append(loss)
 
     def forward_without_generator(self, current_text, current_tag):
