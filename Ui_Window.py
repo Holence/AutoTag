@@ -17,7 +17,7 @@ class Ui_Window(object):
     def setupUi(self, Window):
         if not Window.objectName():
             Window.setObjectName(u"Window")
-        Window.resize(931, 535)
+        Window.resize(917, 500)
         self.horizontalLayout = QHBoxLayout(Window)
         self.horizontalLayout.setObjectName(u"horizontalLayout")
         self.verticalLayout = QVBoxLayout()
@@ -114,10 +114,9 @@ class Ui_Window(object):
 
         self.horizontalLayout_3.addWidget(self.label_2)
 
-        self.label_acc = QLabel(self.layoutWidget_2)
-        self.label_acc.setObjectName(u"label_acc")
+        self.horizontalSpacer = QSpacerItem(40, 20, QSizePolicy.Expanding, QSizePolicy.Minimum)
 
-        self.horizontalLayout_3.addWidget(self.label_acc)
+        self.horizontalLayout_3.addItem(self.horizontalSpacer)
 
         self.label_4 = QLabel(self.layoutWidget_2)
         self.label_4.setObjectName(u"label_4")
@@ -133,6 +132,11 @@ class Ui_Window(object):
 
 
         self.verticalLayout_5.addLayout(self.horizontalLayout_3)
+
+        self.label_acc = QLabel(self.layoutWidget_2)
+        self.label_acc.setObjectName(u"label_acc")
+
+        self.verticalLayout_5.addWidget(self.label_acc)
 
         self.textBrowser_res = QTextBrowser(self.layoutWidget_2)
         self.textBrowser_res.setObjectName(u"textBrowser_res")
@@ -237,8 +241,8 @@ class Ui_Window(object):
         self.pushButton_backward.setText(QCoreApplication.translate("Window", u" De-Train ", None))
         self.label.setText(QCoreApplication.translate("Window", u"Predict Text", None))
         self.label_2.setText(QCoreApplication.translate("Window", u"Result", None))
-        self.label_acc.setText("")
         self.label_4.setText(QCoreApplication.translate("Window", u"Accept Top", None))
+        self.label_acc.setText("")
         self.pushButton_pred.setText(QCoreApplication.translate("Window", u" Predict ", None))
         self.pushButton_load_corpus.setText(QCoreApplication.translate("Window", u" Load Corpus ", None))
         self.pushButton_batch_train.setText(QCoreApplication.translate("Window", u" Batch Train ", None))

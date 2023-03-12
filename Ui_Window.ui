@@ -6,8 +6,8 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>931</width>
-    <height>535</height>
+    <width>917</width>
+    <height>500</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -130,11 +130,17 @@
             </widget>
            </item>
            <item>
-            <widget class="QLabel" name="label_acc">
-             <property name="text">
-              <string/>
+            <spacer name="horizontalSpacer">
+             <property name="orientation">
+              <enum>Qt::Horizontal</enum>
              </property>
-            </widget>
+             <property name="sizeHint" stdset="0">
+              <size>
+               <width>40</width>
+               <height>20</height>
+              </size>
+             </property>
+            </spacer>
            </item>
            <item>
             <widget class="QLabel" name="label_4">
@@ -154,6 +160,13 @@
             </widget>
            </item>
           </layout>
+         </item>
+         <item>
+          <widget class="QLabel" name="label_acc">
+           <property name="text">
+            <string/>
+           </property>
+          </widget>
          </item>
          <item>
           <widget class="QTextBrowser" name="textBrowser_res">

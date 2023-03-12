@@ -83,6 +83,7 @@ class Model():
             "Classifier Batch Train Loss":[],
             "Classifier Continual Single Train Loss":[],
             "Classifier Continual Attach Train Loss":[],
+            "Classifier Continual Baseline Train Loss":[],
             "Generator Continual Single Train Loss":[],
             "Generator Continual Attach Train Loss":[],
         }
@@ -108,13 +109,27 @@ class Model():
         return output["pooler_output"]
 
     def forward(self, current_text, current_tag):
+        def train_generator(sentences_vecs):
+            self.generator.train()
+                
+            output_seq=self.generator(self.tag_dict[current_tag]["vec"].reshape(1,-1))
+            
+            # loss为generator的output_seq和embedded_sentence的差异
+            # 试图让generator输入tag domain的vec，拟合输出embedding domain的vec
+            self.generator.zero_grad()
+            
+            loss=self.generator_criterion(output_seq, sentences_vecs)
+            loss.backward()
+            self.generator_optimizer.step()
+            return loss.tolist()
+
         # "单样本正向训练，生成向量进行陪练"
 
         current_text=pre_process(current_text)
+        sentences_vecs=self.sentences_vectors([current_text])
 
         # 如果tag_dict中没有该tag，就用网络的输出作为该tag的初始tag_vec
         if type(self.tag_dict.get(current_tag))==type(None):
-            sentences_vecs=self.sentences_vectors([current_text])
             
             self.classifier.eval()
             with torch.no_grad():
@@ -125,18 +140,8 @@ class Model():
             }
             
             # -------------------------------------
-            # 再用tag_vec训练generator
-            self.generator.train()
-            # 把tag domain的tag_vec(1 x TAG_VEC_DIM)输入generator
-            output_seq=self.generator(classes_vecs.detach())
-
-            # loss为generator的output_seq和sentences_vecs的差异
-            # 试图让generator输入tag domain的vec，拟合输出embedding domain的vec
-            self.generator.zero_grad()
-            loss=self.generator_criterion(output_seq, sentences_vecs.detach())
-            self.loss_dict["Generator Continual Single Train Loss"].append(loss.tolist())
-            loss.backward()
-            self.generator_optimizer.step()
+            loss=train_generator(sentences_vecs.detach())
+            self.loss_dict["Generator Continual Single Train Loss"].append(loss)
 
         else:
             
@@ -150,8 +155,6 @@ class Model():
                 if tag!=current_tag:
                     other_tag_vecs.append(value["vec"])
             
-            sentences_vecs=self.sentences_vectors([current_text])
-            
             # 如果没有其他陪练的，就取classifier的输出为TARGET_VEC，取orig_tag_vec与TARGET_VEC的连线上的一点为优化目标
             if other_tag_vecs==[]:
                 self.classifier.train()
@@ -161,7 +164,7 @@ class Model():
                 
                 # 取递减偏离的一点
                 target_vec = orig_tag_vec + calc_target_offset(orig_tag_vec, output_tag_vec.detach(), self.tag_dict[current_tag]["time"])
-                
+
                 self.tag_dict[current_tag]["vec"]=target_vec[-1,...]
                 self.tag_dict[current_tag]["time"]+=1
 
@@ -170,6 +173,10 @@ class Model():
                 self.loss_dict["Classifier Continual Single Train Loss"].append(loss.tolist())
                 loss.backward()
                 self.classifier_optimizer.step()
+
+                # -------------------------------------
+                loss=train_generator(sentences_vecs.detach())
+                self.loss_dict["Generator Continual Single Train Loss"].append(loss)
             else:
                 
                 other_tag_vecs=torch.stack(other_tag_vecs)
@@ -213,29 +220,17 @@ class Model():
                 self.classifier_optimizer.step()
 
                 # -------------------------------------
-                # 最后用新得到的tag_vec，训练一下generator
-
-                self.generator.train()
-                
-                output_seq=self.generator(self.tag_dict[current_tag]["vec"].reshape(1,-1))
-                
-                # loss为generator的output_seq和embedded_sentence的差异
-                # 试图让generator输入tag domain的vec，拟合输出embedding domain的vec
-                self.generator.zero_grad()
-                
-                loss=self.generator_criterion(output_seq, sentences_vecs.detach())
-                self.loss_dict["Generator Continual Attach Train Loss"].append(loss.tolist())
-                loss.backward()
-                self.generator_optimizer.step()
+                loss=train_generator(sentences_vecs.detach())
+                self.loss_dict["Generator Continual Attach Train Loss"].append(loss)
 
     def forward_without_generator(self, current_text, current_tag):
         # "单样本正向训练，不带生成向量的陪练"
 
         current_text=pre_process(current_text)
+        sentences_vecs=self.sentences_vectors([current_text])
 
         # 如果tag_dict中没有该tag，就用网络的输出作为该tag的初始tag_vec
         if type(self.tag_dict.get(current_tag))==type(None):
-            sentences_vecs=self.sentences_vectors([current_text])
             
             self.classifier.eval()
             with torch.no_grad():
@@ -246,8 +241,6 @@ class Model():
             }
 
         else:
-            
-            sentences_vecs=self.sentences_vectors([current_text])
             
             self.classifier.train()
             output_tag_vec=self.classifier(sentences_vecs)
@@ -262,6 +255,7 @@ class Model():
 
             self.classifier.zero_grad()
             loss=self.classifier_criterion(output_tag_vec, target_vec)
+            self.loss_dict["Classifier Continual Baseline Train Loss"].append(loss)
             loss.backward()
             self.classifier_optimizer.step()
     
@@ -273,14 +267,13 @@ class Model():
         # 先用generator预测生成current_tag之外的其他tag的所对应的embedding作为训练classifier的陪练
         # 以应对Catastrophic Forgetting
         current_text=pre_process(current_text)
+        sentences_vecs=self.sentences_vectors([current_text])
 
         # 堆叠其他tag的vec
         other_tag_vecs=[]
         for tag,value in random.sample(list(self.tag_dict.items()), min(len(self.tag_dict),TRAIN_ALONG) ): # 随机取TRAIN_ALONG个来伴随训练，太多了的话内存不够用
             if tag!=current_tag:
                 other_tag_vecs.append(value["vec"])
-        
-        sentences_vecs=self.sentences_vectors([current_text])
         
         if other_tag_vecs==[]:
             self.classifier.train()

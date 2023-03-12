@@ -15,6 +15,5 @@ Continual Learning Model for Multi-class Text Classification base on Replay Meth
 
 ## ToDo
 
-- 检查lstm的batch_train
-- lstm的gpu\cpu
+- lstm只用FC做Classifier和Generator？
 - lstm的embedding是否要freezed

@@ -61,24 +61,8 @@ class VecNet(torch.nn.Module):
             
             # 实验发现，按照下面这样修改后，精度大幅提升
             _, (h_n, c_n) = self.lstm(embedded)
-            
-            if h_n.shape[1]>1:
-                # batch
-                forward=[]
-                for i in h_n[-2]:
-                    forward.append(i)
-                reverse=[]
-                for i in h_n[-1]:
-                    reverse.append(i)
-                output=[]
-                for i,j in zip(forward,reverse):
-                    output.append( torch.cat((i,j)) )
-                output=torch.stack(output)
-                
-            else:
-                # single
-                output = torch.cat((h_n[-2, 0], h_n[-1, 0])).reshape(1, -1)
-            
+            # h_n的-2和-1的位置上是正向和负向的最后一层的输出
+            output = torch.cat((h_n[-2], h_n[-1]), -1)
             output = self.full_connect(output)
             
             return output, embedded_orig
@@ -87,13 +71,11 @@ class VecNet(torch.nn.Module):
             # 只有在batch_train的时候才会用到
             # x和seq_lengths是text_to_id_sequence_with_padding出来的seq_tensor,seq_lengths
             embedded_seq_tensors = self.embedding(x)
-            packed_input = pack_padded_sequence(embedded_seq_tensors, seq_lengths.cpu().numpy(), batch_first=True)
-            # out = nn.utils.rnn.pack_padded_sequence(out, seq_len, batch_first=True)
+            packed_input = pack_padded_sequence(embedded_seq_tensors, seq_lengths.numpy(), batch_first=True)
             
-            packed_output, (ht, ct) = self.lstm(packed_input)
-            
-            # output, input_sizes = pad_packed_sequence(packed_output, batch_first=True)
-            out = torch.cat((ht[2], ht[3]), -1)
+            _, (h_n, c_n) = self.lstm(packed_input)
+            # h_n的-2和-1的位置上是正向和负向的最后一层的输出
+            out = torch.cat((h_n[-2], h_n[-1]), -1)
             out = self.full_connect(out)
 
             return out
@@ -101,12 +83,10 @@ class VecNet(torch.nn.Module):
 class GenNet(torch.nn.Module):
     def __init__(self):
         super().__init__()
-        # TAG_VEC_DIM -> 256
-        self.full_connect = torch.nn.Linear(TAG_VEC_DIM, HIDDEN_DIM)
-        # 256 -> 256
-        self.lstm = torch.nn.LSTM(HIDDEN_DIM, HIDDEN_DIM, LAYERS, batch_first=True, dropout=DROPOUT)
-        # 256 -> 300
-        self.full_connect2 = torch.nn.Linear(HIDDEN_DIM, EMBED_DIM)
+        # TAG_VEC_DIM -> EMBED_DIM
+        self.full_connect = torch.nn.Linear(TAG_VEC_DIM, EMBED_DIM)
+        # EMBED_DIM -> EMBED_DIM
+        self.lstm = torch.nn.LSTM(EMBED_DIM, EMBED_DIM, LAYERS, batch_first=True, dropout=DROPOUT)
     
     def forward(self, tag_vecs, seq_lengths):
         
@@ -114,24 +94,22 @@ class GenNet(torch.nn.Module):
         for vec,times in zip(tag_vecs, seq_lengths):
             result=[]
 
-            out=self.full_connect(vec).reshape(1,1,-1)
-            
-            lstm_outs, (ht, ct)=self.lstm(out)
-            lstm_outs=lstm_outs[:, -1, :]
-            result.append(lstm_outs[0])
-            lstm_outs=lstm_outs.reshape(1,1,-1)
-            
+            inputs=self.full_connect(vec).reshape(1,1,-1)
+
+            lstm_outs, (ht, ct)=self.lstm(inputs)
+            lstm_outs=lstm_outs[0,0]
+            result.append(lstm_outs)
+            inputs=lstm_outs.reshape(1,1,-1)
+
             for i in range(times-1):
-                lstm_outs, (ht, ct)=self.lstm(lstm_outs)
-                lstm_outs=lstm_outs[:, -1, :]
-                result.append(lstm_outs[0])
-                lstm_outs=lstm_outs.reshape(1,1,-1)
+                lstm_outs, (ht, ct)=self.lstm(inputs, (ht, ct))
+                lstm_outs=lstm_outs[0,0]
+                result.append(lstm_outs)
+                inputs=lstm_outs.reshape(1,1,-1)
 
             seq_out.append(torch.stack(result))
 
         seq_out=torch.stack(seq_out)
-        
-        seq_out=self.full_connect2(seq_out)
         
         return seq_out
 
@@ -212,6 +190,7 @@ class Model():
             "VecNet Batch Train Loss":[],
             "VecNet Continual Single Train Loss":[],
             "VecNet Continual Attach Train Loss":[],
+            "VecNet Continual Baseline Train Loss":[],
             "GenNet Continual Single Train Loss":[],
             "GenNet Continual Attach Train Loss":[],
         }
@@ -249,7 +228,7 @@ class Model():
         seq_lengths = torch.LongTensor(list(map(len, id_seqs)))
         
         # 生成shape为(len(id_seqs), 最大长度序列)的全0矩阵
-        token_id_seq=torch.autograd.Variable(torch.zeros((len(id_seqs), seq_lengths.max()))).long().to(self.device)
+        token_id_seq=torch.zeros((len(id_seqs), seq_lengths.max())).long().to(self.device)
         
         # 把id_seqs填进去
         for idx, (seq, seqlen) in enumerate(zip(id_seqs, seq_lengths)):
@@ -262,7 +241,7 @@ class Model():
         # 用perm_idx对id_seq进行重排序
         token_id_seq = token_id_seq[perm_idx]
 
-        return token_id_seq,seq_lengths,perm_idx
+        return token_id_seq, seq_lengths, perm_idx
 
     def text_to_id_sequence(self,text):
         # "转换成id sequence"
@@ -282,14 +261,30 @@ class Model():
     def forward(self, current_text, current_tag):
         # "单样本正向训练，生成向量进行陪练"
 
+        def train_gen(embedded_sentence):
+            seq_lengths = torch.LongTensor([len(token_id_seq[0])])
+
+            self.gen_net.train()
+            
+            output_seq=self.gen_net(self.tag_dict[current_tag]["vec"].reshape(1,-1), seq_lengths)
+            
+            # loss为gen_net的output_seq和embedded_sentence的差异
+            # 试图让gen_net输入tag domain的vec，拟合输出embedding domain的vec
+            self.gen_net.zero_grad()
+            
+            loss=self.gen_net_criterion(output_seq, embedded_sentence)
+            loss.backward()
+            self.gen_net_optimizer.step()
+
+            return loss.tolist()
+
         current_text=pre_process(current_text)
+        token_id_seq=self.text_to_id_sequence(current_text)
 
         # 如果tag_dict中没有该tag，就用网络的输出作为该tag的初始tag_vec
         if type(self.tag_dict.get(current_tag))==type(None):
-            # 把sentence转换成token的id序列
-            token_id_seq=self.text_to_id_sequence(current_text)
             # [token的个数]
-            seq_lengths=[token_id_seq[0,...].shape[0]]
+            seq_lengths=[token_id_seq.shape[1]]
             
             # -------------------------------------
             
@@ -301,23 +296,13 @@ class Model():
 
             # 把tag_vec存储到tag_dict中
             self.tag_dict[current_tag]={
-                "vec":tag_vec.detach().cpu()[0,...], # 这里一定要detach掉，不然在计算loss之后，loss.backward会出错
+                "vec":tag_vec.detach()[0,...], # 这里一定要detach掉，不然在计算loss之后，loss.backward会出错
                 "time":1
             }
             
             # -------------------------------------
-            # 再用tag_vec训练gen_net
-            self.gen_net.train()
-            # 把tag domain的tag_vec(1 x TAG_VEC_DIM)输入gen_net，试图产生的embedding domain的output_seq(nx300)
-            output_seq=self.gen_net(tag_vec.detach(),seq_lengths)
-
-            # loss为gen_net的output_seq和embedded_sentence的差异
-            # 试图让gen_net输入tag domain的vec，拟合输出embedding domain的vec
-            self.gen_net.zero_grad()
-            loss=self.gen_net_criterion(output_seq, embedded_sentence.detach())
-            self.loss_dict["GenNet Continual Single Train Loss"].append(loss.tolist())
-            loss.backward()
-            self.gen_net_optimizer.step()
+            loss=train_gen(embedded_sentence.detach())
+            self.loss_dict["GenNet Continual Single Train Loss"].append(loss)
 
         else:
             
@@ -332,26 +317,28 @@ class Model():
                 if tag!=current_tag:
                     other_tag_vecs.append(value["vec"])
             
-            token_id_seq=self.text_to_id_sequence(current_text)
-            
             # 如果没有其他陪练的，就取vec_net的输出为TARGET_VEC，取orig_tag_vec与TARGET_VEC的连线上的一点为优化目标
             if other_tag_vecs==[]:
                 self.vec_net.train()
-                output_tag_vec, _=self.vec_net(token_id_seq)
+                output_tag_vec, embedded_sentence=self.vec_net(token_id_seq)
                 
                 orig_tag_vec=self.tag_dict[current_tag]["vec"].reshape(1,-1)
                 
                 # 取递减偏离的一点
-                target_vec = orig_tag_vec + calc_target_offset(orig_tag_vec, output_tag_vec.detach().cpu(), self.tag_dict[current_tag]["time"])
+                target_vec = orig_tag_vec + calc_target_offset(orig_tag_vec, output_tag_vec.detach(), self.tag_dict[current_tag]["time"])
                 
                 self.tag_dict[current_tag]["vec"]=target_vec[-1,...]
                 self.tag_dict[current_tag]["time"]+=1
 
                 self.vec_net.zero_grad()
-                loss=self.vec_net_criterion(output_tag_vec, target_vec.to(self.device))
+                loss=self.vec_net_criterion(output_tag_vec, target_vec)
                 self.loss_dict["VecNet Continual Single Train Loss"].append(loss.tolist())
                 loss.backward()
                 self.vec_net_optimizer.step()
+                
+                # -------------------------------------
+                loss=train_gen(embedded_sentence.detach())
+                self.loss_dict["GenNet Continual Single Train Loss"].append(loss)
             else:
                 
                 other_tag_vecs=torch.stack(other_tag_vecs)
@@ -363,7 +350,7 @@ class Model():
                 self.gen_net.eval()
                 with torch.no_grad():
                     # 用gen_net预测输出embedding domain的陪练seq
-                    attach_embedding=self.gen_net(other_tag_vecs.to(self.device),seq_lengths)
+                    attach_embedding=self.gen_net(other_tag_vecs, seq_lengths)
 
                 # -------------------------------------
                 # 开始训练vec_net
@@ -385,7 +372,7 @@ class Model():
             
                 # 取orig_tag_vec与TARGET_VEC的连线上的一点为优化目标
                 # 取递减偏离的一点
-                target_vec = orig_tag_vec + calc_target_offset(orig_tag_vec, output_tag_vecs[-1,...].detach().cpu().reshape(1,-1), self.tag_dict[current_tag]["time"])
+                target_vec = orig_tag_vec + calc_target_offset(orig_tag_vec, output_tag_vecs[-1,...].detach().reshape(1,-1), self.tag_dict[current_tag]["time"])
 
                 # 把所有的tag domain的vec都弄起来
                 # 因为在vec_net中current text的embedding放在了最后一个，这里也把current tag的vec放在最后一个
@@ -395,43 +382,25 @@ class Model():
                 self.tag_dict[current_tag]["time"]+=1
                 
                 self.vec_net.zero_grad()
-                loss=self.vec_net_criterion(output_tag_vecs, target_vecs.to(self.device))
+                loss=self.vec_net_criterion(output_tag_vecs, target_vecs)
                 self.loss_dict["VecNet Continual Attach Train Loss"].append(loss.tolist())
                 loss.backward()
                 self.vec_net_optimizer.step()
 
                 # -------------------------------------
                 # 最后用新得到的tag_vec，训练一下gen_net
-
-                seq_lengths = torch.LongTensor([len(token_id_seq[0])])
-
-                self.gen_net.train()
-                
-                output_seq=self.gen_net(self.tag_dict[current_tag]["vec"].reshape(1,-1).to(self.device), seq_lengths)
-                
-                # loss为gen_net的output_seq和embedded_sentence的差异
-                # 试图让gen_net输入tag domain的vec，拟合输出embedding domain的vec
-                self.gen_net.zero_grad()
-                
-                loss=self.gen_net_criterion(output_seq, embedded_sentence.detach())
-                self.loss_dict["GenNet Continual Attach Train Loss"].append(loss.tolist())
-                loss.backward()
-                self.gen_net_optimizer.step()
+                loss=train_gen(embedded_sentence.detach())
+                self.loss_dict["GenNet Continual Attach Train Loss"].append(loss)
     
 
     def forward_without_generator(self, current_text, current_tag):
         # "单样本正向训练，不生成向量进行陪练"
 
         current_text=pre_process(current_text)
+        token_id_seq=self.text_to_id_sequence(current_text)
 
         # 如果tag_dict中没有该tag，就用网络的输出作为该tag的初始tag_vec
         if type(self.tag_dict.get(current_tag))==type(None):
-            # 把sentence转换成token的id序列
-            token_id_seq=self.text_to_id_sequence(current_text)
-            # [token的个数]
-            seq_lengths=[token_id_seq[0,...].shape[0]]
-            
-            # -------------------------------------
             
             self.vec_net.eval()
             with torch.no_grad():
@@ -441,13 +410,11 @@ class Model():
 
             # 把tag_vec存储到tag_dict中
             self.tag_dict[current_tag]={
-                "vec":tag_vec.detach().cpu()[0,...], # 这里一定要detach掉，不然在计算loss之后，loss.backward会出错
+                "vec":tag_vec.detach()[0,...], # 这里一定要detach掉，不然在计算loss之后，loss.backward会出错
                 "time":1
             }
 
         else:
-
-            token_id_seq=self.text_to_id_sequence(current_text)
             
             self.vec_net.train()
             output_tag_vec, _=self.vec_net(token_id_seq)
@@ -455,13 +422,14 @@ class Model():
             orig_tag_vec=self.tag_dict[current_tag]["vec"].reshape(1,-1)
             
             # 取递减偏离的一点
-            target_vec = orig_tag_vec + calc_target_offset(orig_tag_vec, output_tag_vec.detach().cpu(), self.tag_dict[current_tag]["time"])
+            target_vec = orig_tag_vec + calc_target_offset(orig_tag_vec, output_tag_vec.detach(), self.tag_dict[current_tag]["time"])
             
             self.tag_dict[current_tag]["vec"]=target_vec[-1,...]
             self.tag_dict[current_tag]["time"]+=1
 
             self.vec_net.zero_grad()
-            loss=self.vec_net_criterion(output_tag_vec, target_vec.to(self.device))
+            loss=self.vec_net_criterion(output_tag_vec, target_vec)
+            self.loss_dict["VecNet Continual Baseline Train Loss"].append(loss.tolist())
             loss.backward()
             self.vec_net_optimizer.step()
     
@@ -489,14 +457,14 @@ class Model():
             orig_tag_vec=self.tag_dict[current_tag]["vec"].reshape(1,-1)
             
             # 取递减偏离的一点
-            target_vec = orig_tag_vec - calc_target_offset(orig_tag_vec, output_tag_vec.detach().cpu(), self.tag_dict[current_tag]["time"])
+            target_vec = orig_tag_vec - calc_target_offset(orig_tag_vec, output_tag_vec.detach(), self.tag_dict[current_tag]["time"])
             
             self.tag_dict[current_tag]["vec"]=target_vec[-1,...]
             if self.tag_dict[current_tag]["time"]!=1:
                 self.tag_dict[current_tag]["time"]-=0.5
 
             self.vec_net.zero_grad()
-            loss=self.vec_net_criterion(output_tag_vec, target_vec.to(self.device))
+            loss=self.vec_net_criterion(output_tag_vec, target_vec)
             loss.backward()
             self.vec_net_optimizer.step()
         else:
@@ -510,7 +478,7 @@ class Model():
             self.gen_net.eval()
             with torch.no_grad():
                 # 用gen_net预测输出embedding domain的陪练seq
-                attach_embedding=self.gen_net(other_tag_vecs.to(self.device),seq_lengths)
+                attach_embedding=self.gen_net(other_tag_vecs,seq_lengths)
 
             # -------------------------------------
             # 开始训练vec_net
@@ -531,7 +499,7 @@ class Model():
             # 有进有退
             orig_tag_vec=self.tag_dict[current_tag]["vec"].reshape(1,-1)
             
-            offset = calc_target_offset(orig_tag_vec, output_tag_vecs[-1,...].detach().cpu().reshape(1,-1), self.tag_dict[current_tag]["time"])
+            offset = calc_target_offset(orig_tag_vec, output_tag_vecs[-1,...].detach().reshape(1,-1), self.tag_dict[current_tag]["time"])
             target_vecs = torch.cat( [other_tag_vecs + offset, orig_tag_vec - offset] )
             self.tag_dict[current_tag]["vec"]=(orig_tag_vec - offset).reshape(-1)
             
@@ -539,7 +507,7 @@ class Model():
                 self.tag_dict[current_tag]["time"]-=0.5
             
             self.vec_net.zero_grad()
-            loss=self.vec_net_criterion(output_tag_vecs, target_vecs.to(self.device))
+            loss=self.vec_net_criterion(output_tag_vecs, target_vecs)
             loss.backward()
             self.vec_net_optimizer.step()
 
@@ -563,7 +531,7 @@ class Model():
 
                     # 初始参数的网络的输出作为初始的tag_vec
                     self.tag_dict[tag]={
-                        "vec":output_vecs.detach().cpu()[0,...], # 这里一定要detach掉，不然在计算loss之后，loss.backward会出错
+                        "vec":output_vecs.detach()[0,...], # 这里一定要detach掉，不然在计算loss之后，loss.backward会出错
                         "time":1
                     }
         
@@ -585,18 +553,16 @@ class Model():
             target_vec=torch.stack(target_vec)
 
             # 生成vec序列，这里是形状如[[...], [...], ...]的python的列表
-            token_id_seq,seq_lengths,perm_idx=self.text_to_id_sequence_with_padding(batch_texts)
+            token_id_seq, seq_lengths, perm_idx = self.text_to_id_sequence_with_padding(batch_texts)
 
             # 将 padding好的序列 以及 序列中句子的长度 输入网络
             output_vecs=self.vec_net(token_id_seq,seq_lengths=seq_lengths)
 
             # 用perm_idx对target_vec重排序
             target_vec=target_vec[perm_idx]
-            # center=torch.mean(torch.stack([output_vecs.detach().cpu(), target_vec]),dim=0) # 这里一定要detach掉，不然在计算loss之后，loss.backward会出错
-            center=target_vec+(output_vecs.detach().cpu()-target_vec)*0.05
             
             self.vec_net.zero_grad()
-            loss=self.vec_net_criterion(output_vecs, center.to(self.device))
+            loss=self.vec_net_criterion(output_vecs, target_vec)
             self.loss_dict["VecNet Batch Train Loss"].append(loss.tolist())
             print(loss)
             loss.backward()
@@ -617,7 +583,7 @@ class Model():
                 for tag,value in self.tag_dict.items():
                     # 计算距离
                     vec=value["vec"]
-                    result[tag]=torch.linalg.norm(vec-output_vecs.detach().cpu()).tolist()
+                    result[tag]=torch.linalg.norm(vec-output_vecs.detach()).tolist()
                 result=sorted(result.items(),key=lambda x:x[1])
     
             if top_num==-1:
