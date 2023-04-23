@@ -18,23 +18,28 @@ class MainWindow(DTSession.DTMainSession):
         self.model_name="BERT"
     
     def initialize(self):
+        self.loadCorpus()
+
+        from ContinualLearning import ContinualLearningModel
         if self.model_name=="LSTM":
-            from network_lstm import Model
-            self.app.setApplicationName(self.app.applicationName()+" - LSTM")
+            pass
+            # self.app.setApplicationName(self.app.applicationName()+" - LSTM")
         elif self.model_name=="BERT":
-            from network_bert import Model
+            from Bert import Bert, Classifier, Generator
+            self.Model=ContinualLearningModel(Bert, Classifier, Generator)
             self.app.setApplicationName(self.app.applicationName()+" - BERT")
 
-        self.Model=Model()
-
         self.acc_dict={}
-        for tag in self.Model.train_dict:
+        for tag in self.train_dict:
             if self.acc_dict.get(tag)==None:
                 self.acc_dict[tag+"_test"]=[]
                 self.acc_dict[tag+"_train"]=[]
         
         super().initialize()
     
+    def loadCorpus(self):
+        self.train_pipe, self.train_dict, self.test_dict=load_corpus("corpus", 0.5)
+
     def setModel(self, model_name):
         """设置选用的语言模型
         1) "LSTM"\n
@@ -66,7 +71,7 @@ class MainWindow(DTSession.DTMainSession):
         self.module.pushButton_backward.clicked.connect(self.backward)
         self.module.pushButton_pred.clicked.connect(self.predict)
         
-        self.module.pushButton_load_corpus.clicked.connect(self.Model.loadCorpus)
+        self.module.pushButton_load_corpus.clicked.connect(self.loadCorpus)
         self.module.pushButton_continual_train.clicked.connect(self.continual_train)
         self.module.pushButton_continual_train2.clicked.connect(self.continual_train_without_generator)
         self.module.pushButton_batch_train.clicked.connect(self.batch_train)
@@ -77,10 +82,16 @@ class MainWindow(DTSession.DTMainSession):
     
     def saveModel(self):
         self.Model.save()
-
-    def evaluate(self):
+    
+    def checkModel(self):
         if len(self.Model.tag_dict)==0:
             print("There isn't any tag_vec in tag_dict! Please train first!")
+            return False
+        else:
+            return True
+
+    def evaluate(self):
+        if not self.checkModel():
             return
         
         self.module.textBrowser_res.clear()
@@ -172,11 +183,10 @@ class MainWindow(DTSession.DTMainSession):
                 
             return best_loc
         
-        if len(self.Model.tag_dict)==0:
-            print("There isn't any tag_vec in tag_dict! Please train first!")
+        if not self.checkModel():
             return
         
-        X=np.stack([v["vec"].cpu() for v in self.Model.tag_dict.values()]) 
+        X=np.stack([v["tag_vec"].cpu() for v in self.Model.tag_dict.values()]) 
         label = [k for k in self.Model.tag_dict.keys()]
 
         loc = scaledown(X, itera=30000, rand_time=650, verbose=1)
@@ -198,7 +208,7 @@ class MainWindow(DTSession.DTMainSession):
         else:
             update_predict=False
         
-        self.Model.forward(current_text, current_tag)
+        self.Model.continual_forward(current_text, current_tag)
         
         if update_predict:
             self.predict(None)
@@ -211,30 +221,30 @@ class MainWindow(DTSession.DTMainSession):
             DTFrame.DTMessageBox(self,"Warning","%s is not in tag_dict, please forward train first!"%current_tag)
             return
             
-        self.Model.backward(current_text, current_tag)
+        self.Model.continual_backward(current_text, current_tag)
         
         self.predict(None)
 
     def continual_train(self):
-        random.shuffle(self.Model.train_pipe)
-        for i in tqdm(self.Model.train_pipe):
+        random.shuffle(self.train_pipe)
+        for i in tqdm(self.train_pipe):
             self.forward(i[0],i[1])
         self.plot()
     
     def continual_train_without_generator(self):
-        random.shuffle(self.Model.train_pipe)
-        for i in tqdm(self.Model.train_pipe):
-            self.Model.forward_without_generator(i[0],i[1])
+        random.shuffle(self.train_pipe)
+        for i in tqdm(self.train_pipe):
+            self.Model.continual_forward_without_generator(i[0],i[1])
         self.plot()
 
     def batch_train(self):
-        self.Model.batch_train()
+        random.shuffle(self.train_pipe)
+        self.Model.batch_train(self.train_pipe)
         self.plot()
 
     def predict(self, text):
 
-        if len(self.Model.tag_dict)==0:
-            print("There isn't any tag_vec in tag_dict! Please train first!")
+        if not self.checkModel():
             return
         
         if type(text)==str:
@@ -258,7 +268,7 @@ class MainWindow(DTSession.DTMainSession):
                     else:
                         target_tag=None
                     
-                    orig_text=text
+                    original_text=text
                     
                     result=self.Model.predict(text, -1)
                     if result:
@@ -271,14 +281,14 @@ class MainWindow(DTSession.DTMainSession):
         
                         if target_tag!=None:
                             if target_tag in [i[0] for i in result[:self.module.spinBox_top.value()]]:
-                                res+=orig_text+"\n\n"+pred_prob+"\n===\n\n"
+                                res+=original_text+"\n\n"+pred_prob+"\n===\n\n"
                             else:
                                 # 预测错误
-                                res+="~~"+orig_text+"~~"+"\n\n"+pred_prob+"\n===\n\n"
+                                res+="~~"+original_text+"~~"+"\n\n"+pred_prob+"\n===\n\n"
                                 acc-=single_fault
                         else:
                             # 预测正确
-                            res+=orig_text+"\n\n"+pred_prob+"\n===\n\n"
+                            res+=original_text+"\n\n"+pred_prob+"\n===\n\n"
                             acc=0
                 
                 res=res.replace("\n","\n\n")
@@ -287,14 +297,13 @@ class MainWindow(DTSession.DTMainSession):
                 self.module.label_acc.setText("acc: %.2f%%"%(acc*100))
 
     def predict_trainset(self, return_string_and_acc=False):
-        if len(self.Model.tag_dict)==0:
-            print("There isn't any tag_vec in tag_dict! Please train first!")
+        if not self.checkModel():
             return
         
         s=""
         total=0
         total_correct=0
-        for key, value in self.Model.train_dict.items():
+        for key, value in self.train_dict.items():
             total+=len(value)
             single_fault=1/len(value)
             acc=1
@@ -313,14 +322,13 @@ class MainWindow(DTSession.DTMainSession):
             print(s, total_correct/total)
     
     def predict_testset(self, return_string_and_acc=False):
-        if len(self.Model.tag_dict)==0:
-            print("There isn't any tag_vec in tag_dict! Please train first!")
+        if not self.checkModel():
             return
         
         s=""
         total=0
         total_correct=0
-        for key, value in self.Model.test_dict.items():
+        for key, value in self.test_dict.items():
             total+=len(value)
             single_fault=1/len(value)
             acc=1
