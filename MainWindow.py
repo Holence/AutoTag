@@ -137,7 +137,7 @@ class MainWindow(DTSession.DTMainSession):
             d = np.sum((x0 - x1)**2)**0.5
             return d
         
-        def scaledown(X, distance=euclidean, rate=0.1, itera=1000, rand_time=10, verbose=1):
+        def scaledown(X, distance=euclidean, rate=0.1, iter=1000, rand_time=10, verbose=1):
             n = len(X)
             
             # calculate distances martix in high dimensional space
@@ -154,7 +154,7 @@ class MainWindow(DTSession.DTMainSession):
 
                 # start iterating
                 last_error = None
-                for m in range(itera):
+                for m in range(iter):
 
                     # calculate distance in 2D plane
                     twoD_dist = np.array([[np.sum((loc[i] - loc[j])**2)**0.5 for j in range(n)] for i in range(n)])
@@ -189,7 +189,7 @@ class MainWindow(DTSession.DTMainSession):
         X=np.stack([v["tag_vec"].cpu() for v in self.Model.tag_dict.values()]) 
         label = [k for k in self.Model.tag_dict.keys()]
 
-        loc = scaledown(X, itera=30000, rand_time=650, verbose=1)
+        loc = scaledown(X, iter=30000, rand_time=650, verbose=1)
         x = loc[:,0]
         y = loc[:,1]
 
@@ -248,7 +248,7 @@ class MainWindow(DTSession.DTMainSession):
             return
         
         if type(text)==str:
-            return self.Model.predict(text, self.module.spinBox_top.value())
+            return self.Model.predict([text], self.module.spinBox_top.value())
         else:
             text=self.module.plainTextEdit_pred_text.toPlainText()
             scroll=self.module.textBrowser_res.verticalScrollBar().value()
@@ -270,7 +270,7 @@ class MainWindow(DTSession.DTMainSession):
                     
                     original_text=text
                     
-                    result=self.Model.predict(text, -1)
+                    result=self.Model.predict([text], -1)[0]
                     if result:
                         pred_prob=""
                         for i in result:
@@ -303,12 +303,12 @@ class MainWindow(DTSession.DTMainSession):
         s=""
         total=0
         total_correct=0
-        for key, value in self.train_dict.items():
+        for key, value in tqdm(self.train_dict.items()):
             total+=len(value)
             single_fault=1/len(value)
             acc=1
-            for text in value:
-                pred_tags=self.predict(text)
+            pred_tags_list=self.Model.predict(value)
+            for pred_tags in pred_tags_list:
                 if key in pred_tags:
                     total_correct+=1
                 else:
@@ -328,12 +328,12 @@ class MainWindow(DTSession.DTMainSession):
         s=""
         total=0
         total_correct=0
-        for key, value in self.test_dict.items():
+        for key, value in tqdm(self.test_dict.items()):
             total+=len(value)
             single_fault=1/len(value)
             acc=1
-            for text in value:
-                pred_tags=self.predict(text)
+            pred_tags_list=self.Model.predict(value)
+            for pred_tags in pred_tags_list:
                 if key in pred_tags:
                     total_correct+=1
                 else:

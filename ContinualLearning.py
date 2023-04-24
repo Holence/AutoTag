@@ -5,31 +5,36 @@ TRAIN_ALONG=10
 
 class ContinualLearningModel():
     
-    CLA_LR=0.0005
-    GEN_LR=0.0005 # 0.05
+    def __init__(self, LanguageModel, Classifier, Generator, CLS_LR=0.0005, GEN_LR=0.0005) -> None:
+        self.LanguageModel=LanguageModel
+        self.Classifier=Classifier
+        self.Generator=Generator
+        self.CLS_LR=CLS_LR
+        self.GEN_LR=GEN_LR
+        self.initilize()
     
-    def __init__(self, LanguageModel, Classifier, Generator) -> None:
+    def initilize(self):
         self.device=torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
         print("Device:",self.device)
 
-        self.save_path=LanguageModel.__name__+"_Para"
+        self.save_path=self.LanguageModel.__name__+"_Para"
 
-        self.lm=LanguageModel()
+        self.lm=self.LanguageModel()
         self.lm.to(self.device)
 
         # Classifier
-        self.cls=Classifier()
+        self.cls=self.Classifier()
         self.cls.to(self.device)
         # 学习率也应该保存并读取
-        self.cls_optimizer = torch.optim.Adam(self.cls.parameters(), lr=self.CLA_LR)
-        self.cls_criterion = torch.nn.MSELoss(reduction = 'sum')
+        self.cls_optimizer = torch.optim.Adam(self.cls.parameters(), lr=self.CLS_LR)
+        self.cls_criterion = torch.nn.MSELoss()
         
         # Generator
-        self.gen=Generator()
+        self.gen=self.Generator()
         self.gen.to(self.device)
         # 学习率也应该保存并读取
         self.gen_optimizer = torch.optim.Adam(self.gen.parameters(), lr=self.GEN_LR)
-        self.gen_criterion = torch.nn.MSELoss(reduction = 'sum')
+        self.gen_criterion = torch.nn.MSELoss()
 
         # tag_dict
         if os.path.exists(f"{self.save_path}/tag_dict.pt"):
@@ -47,7 +52,6 @@ class ContinualLearningModel():
                 "Classifier Continual Attach Train Loss":[],
                 "Classifier Continual Baseline Train Loss":[],
                 "Generator Continual Single Train Loss":[],
-                "Generator Continual Attach Train Loss":[],
             }
         
     def save(self):
@@ -56,24 +60,32 @@ class ContinualLearningModel():
         torch.save(self.tag_dict, f"{self.save_path}/tag_dict.pt")
         torch.save(self.loss_dict, f"{self.save_path}/loss_dict.pt")
     
-    def predict(self, text, top_num):
-        if text:
+    def predict(self, sample_list, top_num=1):
+        if sample_list:
             self.cls.eval()
-            result={}
             with torch.no_grad():
-                inputs=self.lm(text)
-                output_vec=self.cls(inputs)
+                feature_vecs=[]
+                for i in sample_list:
+                    feature_vec=self.lm(i).reshape(-1)
+                    feature_vecs.append(feature_vec)
+                feature_vecs=torch.stack(feature_vecs)
+                
+                output_tag_vecs=self.cls(feature_vecs)
 
-                for tag,value in self.tag_dict.items():
-                    # 计算距离
-                    tag_vec=value["tag_vec"]
-                    result[tag]=torch.linalg.norm(tag_vec-output_vec).tolist()
-                result=sorted(result.items(),key=lambda x:x[1])
-    
-            if top_num==-1:
-                return result
-            else:
-                return [i[0] for i in result[:top_num]]
+            tag_vecs=torch.stack([i["tag_vec"] for i in self.tag_dict.values()])
+            tags=[i for i in self.tag_dict.keys()]
+
+            result=[]
+            for output_tag_vec in output_tag_vecs:
+                distance = torch.linalg.norm(tag_vecs-output_tag_vec, dim=1)
+                _, sorted_index = distance.sort()
+                if top_num==-1:
+                    result.append([[tags[i], distance[i]] for i in sorted_index])
+                else:
+                    result.append([tags[i] for i in sorted_index][:top_num])
+            
+            return result
+
     
     def continual_forward(self, train_text, train_tag):
         # "单样本正向训练，生成向量进行陪练"
