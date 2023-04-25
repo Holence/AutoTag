@@ -16,4 +16,5 @@ Continual Learning Model for Multi-class Text Classification base on Replay Meth
 ## ToDo
 
 - lstm的gen_net如何持续训练？
-- 现在持续学习的效果比forward_without_generator还差🤡
+- 现在持续学习的效果比forward_without_generator还差🤡，因为Generator是单样本训练
+- self.lm.eval()要加吗

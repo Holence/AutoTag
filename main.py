@@ -12,8 +12,8 @@ app.setLoginEnable(False)
 
 session=MainWindow(app)
 
-# session.setModel("BERT")
-session.setModel("LSTM")
+session.setModel("BERT")
+# session.setModel("LSTM")
 
 app.setMainSession(session)
 

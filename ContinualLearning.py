@@ -107,7 +107,7 @@ class ContinualLearningModel():
             # 单样本训练Generator
             self.gen.train()
             output_feature_vecs=self.gen(tag_vec)
-            self.gen.zero_grad()
+            self.gen_optimizer.zero_grad()
             loss=self.gen_criterion(output_feature_vecs, target_feature_vec)
             loss.backward()
             self.loss_dict["Generator Continual Single Train Loss"].append(loss.tolist())
@@ -160,7 +160,7 @@ class ContinualLearningModel():
                 self.tag_dict[train_tag]["tag_vec"]=target_vec.reshape(-1)
                 self.tag_dict[train_tag]["time"]+=1
 
-                self.cls.zero_grad()
+                self.cls_optimizer.zero_grad()
                 loss=self.cls_criterion(output_tag_vec, target_vec)
                 self.loss_dict["Classifier Continual Single Train Loss"].append(loss.tolist())
                 loss.backward()
@@ -200,7 +200,7 @@ class ContinualLearningModel():
                 # 因为在classifier中current text的embedding放在了最后一个，这里也把current tag的vec放在最后一个
                 target_vecs=torch.cat([ other_tag_vecs, target_vec ])
                 
-                self.cls.zero_grad()
+                self.cls_optimizer.zero_grad()
                 loss=self.cls_criterion(output_tag_vecs, target_vecs)
                 self.loss_dict["Classifier Continual Attach Train Loss"].append(loss.tolist())
                 loss.backward()
@@ -237,7 +237,7 @@ class ContinualLearningModel():
             self.tag_dict[train_tag]["tag_vec"]=target_vec.reshape(-1)
             self.tag_dict[train_tag]["time"]+=1
 
-            self.cls.zero_grad()
+            self.cls_optimizer.zero_grad()
             loss=self.cls_criterion(output_tag_vec, target_vec)
             self.loss_dict["Classifier Continual Baseline Train Loss"].append(loss.tolist())
             loss.backward()
@@ -269,7 +269,7 @@ class ContinualLearningModel():
             
             self.tag_dict[train_tag]["tag_vec"]=target_vec.reshape(-1)
             
-            self.cls.zero_grad()
+            self.cls_optimizer.zero_grad()
             loss=self.cls_criterion(output_tag_vec, target_vec)
             loss.backward()
             self.cls_optimizer.step()
@@ -301,7 +301,7 @@ class ContinualLearningModel():
             
             self.tag_dict[train_tag]["tag_vec"]=(original_tag_vec - offset).reshape(-1)
             
-            self.cls.zero_grad()
+            self.cls_optimizer.zero_grad()
             loss=self.cls_criterion(output_tag_vecs, target_vecs)
             loss.backward()
             self.cls_optimizer.step()
@@ -309,11 +309,11 @@ class ContinualLearningModel():
         if self.tag_dict[train_tag]["time"]>1:
             self.tag_dict[train_tag]["time"]-=1
     
-    def batch_train(self, train_pipe):
+    def batch_train(self, train_pipe, batch_size=16):
         # 遍历一遍训练集中所有的tag，如果tag_dict中没有该tag，就用网络的输出作为该tag的初始tag_vec
         temp_train_dict={}
         for i in train_pipe:
-            text=i[1]
+            text=i[0]
             tag=i[1]
             if temp_train_dict.get(tag)==None:
                 temp_train_dict[tag]=[text]
@@ -335,7 +335,6 @@ class ContinualLearningModel():
 
         # 开始以batch_size为一个batch，对全体训练集进行小批量训练
         self.cls.train()
-        batch_size=16
         o=0
         while o<len(train_pipe):
 
@@ -355,7 +354,7 @@ class ContinualLearningModel():
             self.cls_optimizer.zero_grad()
             loss=self.cls_criterion(target_tag_vecs, output_tag_vecs)
             self.loss_dict["Classifier Batch Train Loss"].append(loss.tolist())
-            print(loss)
+            # print(loss)
             loss.backward()
             self.cls_optimizer.step()
 

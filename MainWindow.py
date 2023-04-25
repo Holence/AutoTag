@@ -122,13 +122,13 @@ class MainWindow(DTSession.DTMainSession):
         plt.legend(keys2)
 
         plt.figure()
-        for tag in [i for i in self.acc_dict.keys() if "test" in i]:
-            plt.plot(self.acc_dict[tag])
+        for key in [i for i in self.acc_dict.keys() if "test" in i]:
+            plt.plot(self.acc_dict[key])
         plt.legend([i for i in self.acc_dict.keys() if "test" in i])
         
         plt.figure()
-        for tag in [i for i in self.acc_dict.keys() if "train" in i]:
-            plt.plot(self.acc_dict[tag])
+        for key in [i for i in self.acc_dict.keys() if "train" in i]:
+            plt.plot(self.acc_dict[key])
         plt.legend([i for i in self.acc_dict.keys() if "train" in i])
 
     def plot2D(self):
@@ -305,14 +305,13 @@ class MainWindow(DTSession.DTMainSession):
         total_correct=0
         for key, value in tqdm(self.train_dict.items()):
             total+=len(value)
-            single_fault=1/len(value)
-            acc=1
+            current_correct=0
             pred_tags_list=self.Model.predict(value)
             for pred_tags in pred_tags_list:
                 if key in pred_tags:
                     total_correct+=1
-                else:
-                    acc-=single_fault
+                    current_correct+=1
+            acc=current_correct/len(value)
             self.acc_dict[key+"_train"].append(acc)
             s+="Train Prediction for %10s ---- %.2f%%\n"%(key, acc*100)
 
@@ -330,14 +329,13 @@ class MainWindow(DTSession.DTMainSession):
         total_correct=0
         for key, value in tqdm(self.test_dict.items()):
             total+=len(value)
-            single_fault=1/len(value)
-            acc=1
+            current_correct=0
             pred_tags_list=self.Model.predict(value)
             for pred_tags in pred_tags_list:
                 if key in pred_tags:
                     total_correct+=1
-                else:
-                    acc-=single_fault
+                    current_correct+=1
+            acc=current_correct/len(value)
             self.acc_dict[key+"_test"].append(acc)
             s+="Test Prediction for %10s ---- %.2f%%\n"%(key, acc*100)
         
