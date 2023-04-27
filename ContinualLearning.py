@@ -1,16 +1,15 @@
 import torch
 from utils import *
 
-TRAIN_ALONG=10
-
 class ContinualLearningModel():
     
-    def __init__(self, LanguageModel, Classifier, Generator, CLS_LR=0.0005, GEN_LR=0.0005) -> None:
+    def __init__(self, LanguageModel, Classifier, Generator, CLS_LR=0.0005, GEN_LR=0.0005, TRAIN_ALONG=10) -> None:
         self.LanguageModel=LanguageModel
         self.Classifier=Classifier
         self.Generator=Generator
         self.CLS_LR=CLS_LR
         self.GEN_LR=GEN_LR
+        self.TRAIN_ALONG=TRAIN_ALONG
         self.initilize()
     
     def initilize(self):
@@ -97,7 +96,7 @@ class ContinualLearningModel():
             # 用一些tag的feature_vecs训练Generator
             # tag_vecs=[]
             # target_feature_vecs=[]
-            # for tag, value in random.sample(list(self.tag_dict.items()), min(len(self.tag_dict), TRAIN_ALONG) ): # 随机取TRAIN_ALONG个来伴随训练，太多了的话内存不够用
+            # for tag, value in random.sample(list(self.tag_dict.items()), min(len(self.tag_dict), self.TRAIN_ALONG) ): # 随机取TRAIN_ALONG个来伴随训练，太多了的话内存不够用
             #     tag_vecs.append(value["tag_vec"])
             #     target_feature_vecs.append(self.feature_dict[tag])
             # tag_vecs=torch.stack(tag_vecs)
@@ -136,7 +135,7 @@ class ContinualLearningModel():
 
             # 堆叠其他tag的tag_vec
             other_tag_vecs=[]
-            for tag, value in random.sample(list(self.tag_dict.items()), min(len(self.tag_dict), TRAIN_ALONG) ): # 随机取TRAIN_ALONG个来伴随训练，太多了的话内存不够用
+            for tag, value in random.sample(list(self.tag_dict.items()), min(len(self.tag_dict), self.TRAIN_ALONG) ): # 随机取TRAIN_ALONG个来伴随训练，太多了的话内存不够用
                 if tag!=train_tag:
                     other_tag_vecs.append(value["tag_vec"])
             
@@ -248,7 +247,7 @@ class ContinualLearningModel():
 
         # 堆叠其他tag的vec
         other_tag_vecs=[]
-        for tag,value in random.sample(list(self.tag_dict.items()), min(len(self.tag_dict), TRAIN_ALONG) ): # 随机取TRAIN_ALONG个来伴随训练，太多了的话内存不够用
+        for tag,value in random.sample(list(self.tag_dict.items()), min(len(self.tag_dict), self.TRAIN_ALONG) ): # 随机取TRAIN_ALONG个来伴随训练，太多了的话内存不够用
             if tag!=train_tag:
                 other_tag_vecs.append(value["tag_vec"])
         
