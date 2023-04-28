@@ -15,19 +15,28 @@ class MainWindow(DTSession.DTMainSession):
     
     def __init__(self, app: DTAPP):
         super().__init__(app)
-        self.model_name="BERT"
+        self.lm_model="BERT"
     
     def initialize(self):
         self.loadCorpus()
-
-        from ContinualLearning import ContinualLearningModel
-        if self.model_name=="LSTM":
+        
+        if self.lm_model=="LSTM":
             pass
-            # self.app.setApplicationName(self.app.applicationName()+" - LSTM")
-        elif self.model_name=="BERT":
+        elif self.lm_model=="BERT":
             from Bert import Bert, Classifier, Generator
-            self.Model=ContinualLearningModel(Bert, Classifier, Generator)
-            self.app.setApplicationName(self.app.applicationName()+" - BERT")
+        else:
+            raise("Wrong lm_model")
+
+        if self.cl_method=="Store":
+            from ContinualLearning import ContinualLearningModel_Store
+            self.Model=ContinualLearningModel_Store(Bert, Classifier, 0.0005, 10)
+        elif self.cl_method=="Generate":
+            from ContinualLearning import ContinualLearningModel_Generate
+            self.Model=ContinualLearningModel_Generate(Bert, Classifier, 0.0005, 10, Generator, 0.0005)
+        else:
+            raise("Wrong cl_method")
+
+        self.app.setApplicationName(self.app.applicationName()+" - %s"%self.Model.__class__.__name__)
 
         self.acc_dict={}
         for tag in self.train_dict:
@@ -40,24 +49,30 @@ class MainWindow(DTSession.DTMainSession):
     def loadCorpus(self):
         self.train_pipe, self.train_dict, self.test_dict=load_corpus("corpus", 0.5)
 
-    def setModel(self, model_name):
-        """设置选用的语言模型
-        1) "LSTM"\n
-            train VecNet:\n
-                from pretrained Word2Vec get Word Embeddings\n
-                put Word Embeddings into LSTM get Sentence Embeddings\n
-                put Sentence Embeddings into LSTM get Tag Vector\n
-            train GenNet:\n
-                put Tag Vector into Linear+LSTM+Linear get Generated Word Embeddings\n
-        
-        2) "BERT"\n
-            train Classifier:\n
-                from pretrained BERT get Sentence Embeddings\n
-                put Sentence Embeddings into Linear get Tag Vector\n
-            train Generator:\n
-                put Tag Vector into Linear get Generated Word Embeddings\n
+    def setModel(self, lm_model: str, cl_method: str):
+        """设置选用的模型
+
+        lm_model (str): 
+            1) "LSTM"
+                train VecNet:
+                    from pretrained Word2Vec get Word Embeddings
+                    put Word Embeddings into LSTM get Sentence Embeddings
+                    put Sentence Embeddings into LSTM get Tag Vector
+                train GenNet:
+                    put Tag Vector into Linear+LSTM+Linear get Generated Word Embeddings
+            
+            2) "BERT"
+                train Classifier:
+                    from pretrained BERT get Sentence Embeddings
+                    put Sentence Embeddings into Linear get Tag Vector
+                train Generator:
+                    put Tag Vector into Linear get Generated Word Embeddings
+        cl_method (str): 
+            1) "Store"
+            2) "Generate"
         """
-        self.model_name=model_name
+        self.lm_model=lm_model
+        self.cl_method=cl_method
     
     def initializeWindow(self):
         super().initializeWindow()
@@ -71,10 +86,11 @@ class MainWindow(DTSession.DTMainSession):
         self.module.pushButton_backward.clicked.connect(self.backward)
         self.module.pushButton_pred.clicked.connect(self.predict)
         
+        self.module.pushButton_reset.clicked.connect(self.reset)
         self.module.pushButton_load_corpus.clicked.connect(self.loadCorpus)
-        self.module.pushButton_continual_train.clicked.connect(self.continual_train)
-        self.module.pushButton_continual_train2.clicked.connect(self.continual_train_without_generator)
         self.module.pushButton_batch_train.clicked.connect(self.batch_train)
+        self.module.pushButton_continual_train_basic.clicked.connect(self.continual_train_basic)
+        self.module.pushButton_continual_train.clicked.connect(self.continual_train)
         self.module.pushButton_plot.clicked.connect(self.plot)
         self.module.pushButton_plot2D.clicked.connect(self.plot2D)
         self.module.pushButton_eval.clicked.connect(self.evaluate)
@@ -82,6 +98,9 @@ class MainWindow(DTSession.DTMainSession):
     
     def saveModel(self):
         self.Model.save()
+    
+    def reset(self):
+        self.Model.initilize()
     
     def checkModel(self):
         if len(self.Model.tag_dict)==0:
@@ -106,20 +125,13 @@ class MainWindow(DTSession.DTMainSession):
         plt.ion()
 
         plt.figure()
-        keys1=[]
+        keys=[]
         for key in self.Model.loss_dict.keys():
-            if "Batch" in key and self.Model.loss_dict[key]:
-                plt.plot(self.Model.loss_dict[key])
-                keys1.append(key)
-        plt.legend(keys1)
-
-        plt.figure()
-        keys2=[]
-        for key in self.Model.loss_dict.keys():
-            if "Batch" not in key and self.Model.loss_dict[key]:
-                plt.plot(self.Model.loss_dict[key])
-                keys2.append(key)
-        plt.legend(keys2)
+            if self.Model.loss_dict[key]:
+                t=torch.tensor(self.Model.loss_dict[key])
+                plt.plot(t[:,0], t[:,1])
+                keys.append(key)
+        plt.legend(keys)
 
         plt.figure()
         for key in [i for i in self.acc_dict.keys() if "test" in i]:
@@ -224,22 +236,27 @@ class MainWindow(DTSession.DTMainSession):
         self.Model.continual_backward(current_text, current_tag)
         
         self.predict(None)
+    
+    def continual_train_basic(self):
+        random.shuffle(self.train_pipe)
+        for i in tqdm(self.train_pipe):
+            self.Model.continual_forward_baseline(i[0],i[1])
+        self.plot()
 
     def continual_train(self):
         random.shuffle(self.train_pipe)
         for i in tqdm(self.train_pipe):
             self.forward(i[0],i[1])
         self.plot()
-    
-    def continual_train_without_generator(self):
-        random.shuffle(self.train_pipe)
-        for i in tqdm(self.train_pipe):
-            self.Model.continual_forward_without_generator(i[0],i[1])
-        self.plot()
 
     def batch_train(self):
+        batch_size=16
         random.shuffle(self.train_pipe)
-        self.Model.batch_train(self.train_pipe)
+        for i in tqdm(range(0, len(self.train_pipe)+batch_size, batch_size)):
+            if self.train_pipe[i:i+batch_size]:
+                loss=self.Model.batch_train(self.train_pipe[i:i+batch_size])
+        self.Model.epoch+=1
+        self.Model.loss_dict["Classifier Batch Train Loss"].append((self.Model.epoch, loss))
         self.plot()
 
     def predict(self, text):

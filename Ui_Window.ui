@@ -7,7 +7,7 @@
     <x>0</x>
     <y>0</y>
     <width>917</width>
-    <height>500</height>
+    <height>527</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -60,7 +60,7 @@
           </sizepolicy>
          </property>
          <property name="text">
-          <string> Train </string>
+          <string> Forward Train </string>
          </property>
         </widget>
        </item>
@@ -73,7 +73,7 @@
           </sizepolicy>
          </property>
          <property name="text">
-          <string> De-Train </string>
+          <string> Backward Train </string>
          </property>
         </widget>
        </item>
@@ -232,6 +232,19 @@
       </widget>
      </item>
      <item>
+      <widget class="QPushButton" name="pushButton_reset">
+       <property name="sizePolicy">
+        <sizepolicy hsizetype="Preferred" vsizetype="Fixed">
+         <horstretch>0</horstretch>
+         <verstretch>0</verstretch>
+        </sizepolicy>
+       </property>
+       <property name="text">
+        <string> Rest Network </string>
+       </property>
+      </widget>
+     </item>
+     <item>
       <widget class="QPushButton" name="pushButton_batch_train">
        <property name="sizePolicy">
         <sizepolicy hsizetype="Preferred" vsizetype="Fixed">
@@ -245,6 +258,20 @@
       </widget>
      </item>
      <item>
+      <widget class="QPushButton" name="pushButton_continual_train_basic">
+       <property name="sizePolicy">
+        <sizepolicy hsizetype="Preferred" vsizetype="Fixed">
+         <horstretch>0</horstretch>
+         <verstretch>0</verstretch>
+        </sizepolicy>
+       </property>
+       <property name="text">
+        <string>Continual Train
+(Basic)</string>
+       </property>
+      </widget>
+     </item>
+     <item>
       <widget class="QPushButton" name="pushButton_continual_train">
        <property name="sizePolicy">
         <sizepolicy hsizetype="Preferred" vsizetype="Fixed">
@@ -254,20 +281,6 @@
        </property>
        <property name="text">
         <string> Continual Train </string>
-       </property>
-      </widget>
-     </item>
-     <item>
-      <widget class="QPushButton" name="pushButton_continual_train2">
-       <property name="sizePolicy">
-        <sizepolicy hsizetype="Preferred" vsizetype="Fixed">
-         <horstretch>0</horstretch>
-         <verstretch>0</verstretch>
-        </sizepolicy>
-       </property>
-       <property name="text">
-        <string>Continual Train
-without Gen</string>
        </property>
       </widget>
      </item>

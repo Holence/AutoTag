@@ -17,7 +17,7 @@ class Ui_Window(object):
     def setupUi(self, Window):
         if not Window.objectName():
             Window.setObjectName(u"Window")
-        Window.resize(917, 500)
+        Window.resize(917, 527)
         self.horizontalLayout = QHBoxLayout(Window)
         self.horizontalLayout.setObjectName(u"horizontalLayout")
         self.verticalLayout = QVBoxLayout()
@@ -173,6 +173,13 @@ class Ui_Window(object):
 
         self.verticalLayout_3.addWidget(self.pushButton_load_corpus)
 
+        self.pushButton_reset = QPushButton(Window)
+        self.pushButton_reset.setObjectName(u"pushButton_reset")
+        sizePolicy1.setHeightForWidth(self.pushButton_reset.sizePolicy().hasHeightForWidth())
+        self.pushButton_reset.setSizePolicy(sizePolicy1)
+
+        self.verticalLayout_3.addWidget(self.pushButton_reset)
+
         self.pushButton_batch_train = QPushButton(Window)
         self.pushButton_batch_train.setObjectName(u"pushButton_batch_train")
         sizePolicy1.setHeightForWidth(self.pushButton_batch_train.sizePolicy().hasHeightForWidth())
@@ -180,19 +187,19 @@ class Ui_Window(object):
 
         self.verticalLayout_3.addWidget(self.pushButton_batch_train)
 
+        self.pushButton_continual_train_basic = QPushButton(Window)
+        self.pushButton_continual_train_basic.setObjectName(u"pushButton_continual_train_basic")
+        sizePolicy1.setHeightForWidth(self.pushButton_continual_train_basic.sizePolicy().hasHeightForWidth())
+        self.pushButton_continual_train_basic.setSizePolicy(sizePolicy1)
+
+        self.verticalLayout_3.addWidget(self.pushButton_continual_train_basic)
+
         self.pushButton_continual_train = QPushButton(Window)
         self.pushButton_continual_train.setObjectName(u"pushButton_continual_train")
         sizePolicy1.setHeightForWidth(self.pushButton_continual_train.sizePolicy().hasHeightForWidth())
         self.pushButton_continual_train.setSizePolicy(sizePolicy1)
 
         self.verticalLayout_3.addWidget(self.pushButton_continual_train)
-
-        self.pushButton_continual_train2 = QPushButton(Window)
-        self.pushButton_continual_train2.setObjectName(u"pushButton_continual_train2")
-        sizePolicy1.setHeightForWidth(self.pushButton_continual_train2.sizePolicy().hasHeightForWidth())
-        self.pushButton_continual_train2.setSizePolicy(sizePolicy1)
-
-        self.verticalLayout_3.addWidget(self.pushButton_continual_train2)
 
         self.pushButton_plot = QPushButton(Window)
         self.pushButton_plot.setObjectName(u"pushButton_plot")
@@ -237,18 +244,19 @@ class Ui_Window(object):
     def retranslateUi(self, Window):
         Window.setWindowTitle(QCoreApplication.translate("Window", u"Form", None))
         self.label_3.setText(QCoreApplication.translate("Window", u"Train Text", None))
-        self.pushButton_forward.setText(QCoreApplication.translate("Window", u" Train ", None))
-        self.pushButton_backward.setText(QCoreApplication.translate("Window", u" De-Train ", None))
+        self.pushButton_forward.setText(QCoreApplication.translate("Window", u" Forward Train ", None))
+        self.pushButton_backward.setText(QCoreApplication.translate("Window", u" Backward Train ", None))
         self.label.setText(QCoreApplication.translate("Window", u"Predict Text", None))
         self.label_2.setText(QCoreApplication.translate("Window", u"Result", None))
         self.label_4.setText(QCoreApplication.translate("Window", u"Accept Top", None))
         self.label_acc.setText("")
         self.pushButton_pred.setText(QCoreApplication.translate("Window", u" Predict ", None))
         self.pushButton_load_corpus.setText(QCoreApplication.translate("Window", u" Load Corpus ", None))
+        self.pushButton_reset.setText(QCoreApplication.translate("Window", u" Rest Network ", None))
         self.pushButton_batch_train.setText(QCoreApplication.translate("Window", u" Batch Train ", None))
+        self.pushButton_continual_train_basic.setText(QCoreApplication.translate("Window", u"Continual Train\n"
+"(Basic)", None))
         self.pushButton_continual_train.setText(QCoreApplication.translate("Window", u" Continual Train ", None))
-        self.pushButton_continual_train2.setText(QCoreApplication.translate("Window", u"Continual Train\n"
-"without Gen", None))
         self.pushButton_plot.setText(QCoreApplication.translate("Window", u" Plot ", None))
         self.pushButton_plot2D.setText(QCoreApplication.translate("Window", u" Plot 2D ", None))
         self.pushButton_eval.setText(QCoreApplication.translate("Window", u" Evaluate ", None))
