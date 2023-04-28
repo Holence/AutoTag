@@ -97,7 +97,8 @@ class BaseModel():
     
     def batch_train(self, train_pipe):
         "批量，正向训练，作为效果比较的顶线"
-
+        # 这里只是一个iteration训练一个batch，所以应该在外部调用的地方对epoch进行+=1
+        
         # 遍历一遍训练集中所有的tag，如果tag_dict中没有该tag，就用网络的输出作为该tag的初始tag_vec
         need_text_tag=[]
         for tag in set([i[1] for i in train_pipe]):
@@ -115,34 +116,51 @@ class BaseModel():
                         temp_train_dict[tag].append(text)
             self.cls.eval()
             with torch.no_grad():
-                for key, value in temp_train_dict.items():
-                    feature_text=random.sample(value, 1)[0]
-                    feature_vec=self.fxm(feature_text).detach()
-                    tag_vec=self.cls(feature_vec)
+                for key, text_list in temp_train_dict.items():
+                    feature_vecs=torch.stack([self.fxm(text).detach() for text in text_list])
+                    tag_vecs=self.cls(feature_vecs)
                     self.tag_dict[key]={
-                        "tag_vec": tag_vec.detach().reshape(-1),
+                        "tag_vec": tag_vecs.mean(dim=0).reshape(-1),
                         "time": 1
                     }
                     if self.__class__.__name__=="ContinualLearningModel_Store":
-                        self.tag_dict[key]["feature_vec"]=feature_vec.detach().reshape(-1)
-
-        self.cls.train()
+                        self.tag_dict[key]["feature_vec"]=feature_vecs.mean(dim=0).reshape(-1)
         
-        feature_vecs=[]
-        target_tag_vecs=[]
+        index_dict={}
+        for i in range(len(train_pipe)):
+            tag=train_pipe[i][1]
+            if index_dict.get(tag)==None:
+                self.tag_dict[tag]["time"]+=1
+                index_dict[tag]=[i]
+            else:
+                index_dict[tag].append(i)
+        self.cls.train()
+
+        train_feature_vecs=[]
+        original_tag_vecs=[]
         for i in train_pipe:
             text=i[0]
             tag=i[1]
             feature_vec=self.fxm(text).detach().reshape(-1)
-            feature_vecs.append(feature_vec)
-            target_tag_vecs.append(self.tag_dict[tag]["tag_vec"])
-        feature_vecs=torch.stack(feature_vecs)
-        target_tag_vecs=torch.stack(target_tag_vecs)
+            train_feature_vecs.append(feature_vec)
+            original_tag_vecs.append(self.tag_dict[tag]["tag_vec"])
+        train_feature_vecs=torch.stack(train_feature_vecs)
+        original_tag_vecs=torch.stack(original_tag_vecs)
 
-        output_tag_vecs=self.cls(feature_vecs)
+        output_tag_vecs=self.cls(train_feature_vecs)
+        
+        for tag, indexs in index_dict.items():
+            new_tag_vec = self.tag_dict[tag]["tag_vec"] + calc_target_offset(self.tag_dict[tag]["tag_vec"], output_tag_vecs[indexs].detach().mean(dim=0), self.tag_dict[tag]["time"])
+            original_tag_vecs[indexs] = new_tag_vec
+            self.tag_dict[tag]["tag_vec"] = new_tag_vec
+
+            if self.__class__.__name__=="ContinualLearningModel_Store":
+                original_feature_vec = self.tag_dict[tag]["feature_vec"]
+                new_feature_vec = original_feature_vec + calc_target_offset(original_feature_vec, train_feature_vecs[indexs].mean(dim=0), self.tag_dict[tag]["time"])
+                self.tag_dict[tag]["feature_vec"] = new_feature_vec
 
         self.cls_optimizer.zero_grad()
-        loss=self.cls_criterion(target_tag_vecs, output_tag_vecs)
+        loss=self.cls_criterion(original_tag_vecs, output_tag_vecs)
         loss.backward()
         self.cls_optimizer.step()
 
