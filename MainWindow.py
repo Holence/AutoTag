@@ -254,9 +254,7 @@ class MainWindow(DTSession.DTMainSession):
         random.shuffle(self.train_pipe)
         for i in tqdm(range(0, len(self.train_pipe)+batch_size, batch_size)):
             if self.train_pipe[i:i+batch_size]:
-                loss=self.Model.batch_train(self.train_pipe[i:i+batch_size])
-        self.Model.epoch+=1
-        self.Model.loss_dict["Classifier Batch Train Loss"].append((self.Model.epoch, loss))
+                self.Model.batch_train(self.train_pipe[i:i+batch_size])
         self.plot()
 
     def predict(self, text):

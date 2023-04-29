@@ -43,7 +43,7 @@ class BaseModel():
                 "Generator Continual Single Train Loss":[],
             }
     
-        self.epoch=0
+        self.iteration=0
     
     def save(self):
         torch.save(self.cls.state_dict(), f"{self.save_path}/classifier_para.pt")
@@ -52,9 +52,10 @@ class BaseModel():
 
     def continual_forward_baseline(self, train_text, train_tag):
         "单样本，正向训练，不带任何持续学习优化算法，作为效果比较的底线"
-        self.epoch+=1
+        self.iteration+=1
 
-        train_feature_vec=self.fxm(train_text).detach() # 这里就detach掉，BERT是不用训练的，LSTM的话怎么弄
+        self.fxm.train()
+        train_feature_vec=self.fxm(train_text)
 
         # 如果tag_dict中没有该tag，就用网络的输出作为该tag的初始tag_vec
         if not self.tag_dict.get(train_tag):
@@ -83,7 +84,7 @@ class BaseModel():
 
             self.cls_optimizer.zero_grad()
             loss=self.cls_criterion(output_tag_vec, target_tag_vec)
-            self.loss_dict["Classifier Continual Baseline Train Loss"].append((self.epoch, loss.tolist()))
+            self.loss_dict["Classifier Continual Baseline Train Loss"].append((self.iteration, loss.tolist()))
             loss.backward()
             self.cls_optimizer.step()
 
@@ -92,12 +93,12 @@ class BaseModel():
                 # 实验表明feature_vec用calc_target_offset更新后的效果更好
                 # self.tag_dict[train_tag]["feature_vec"]=train_feature_vec.detach().reshape(-1)
                 original_feature_vec=self.tag_dict[train_tag]["feature_vec"].reshape(1,-1)
-                new_feature_vec = original_feature_vec + calc_target_offset(original_feature_vec, train_feature_vec, self.tag_dict[train_tag]["time"])
+                new_feature_vec = original_feature_vec + calc_target_offset(original_feature_vec, train_feature_vec.detach(), self.tag_dict[train_tag]["time"])
                 self.tag_dict[train_tag]["feature_vec"]=new_feature_vec.reshape(-1)
     
     def batch_train(self, train_pipe):
         "批量，正向训练，作为效果比较的顶线"
-        # 这里只是一个iteration训练一个batch，所以应该在外部调用的地方对epoch进行+=1
+        self.iteration+=1
         
         # 遍历一遍训练集中所有的tag，如果tag_dict中没有该tag，就用网络的输出作为该tag的初始tag_vec
         need_text_tag=[]
@@ -115,6 +116,7 @@ class BaseModel():
                     else:
                         temp_train_dict[tag].append(text)
             self.cls.eval()
+            self.fxm.eval()
             with torch.no_grad():
                 for key, text_list in temp_train_dict.items():
                     feature_vecs=torch.stack([self.fxm(text).detach() for text in text_list])
@@ -134,14 +136,15 @@ class BaseModel():
                 index_dict[tag]=[i]
             else:
                 index_dict[tag].append(i)
-        self.cls.train()
 
+        self.cls.train()
+        self.fxm.train()
         train_feature_vecs=[]
         original_tag_vecs=[]
         for i in train_pipe:
             text=i[0]
             tag=i[1]
-            feature_vec=self.fxm(text).detach().reshape(-1)
+            feature_vec=self.fxm(text).reshape(-1)
             train_feature_vecs.append(feature_vec)
             original_tag_vecs.append(self.tag_dict[tag]["tag_vec"])
         train_feature_vecs=torch.stack(train_feature_vecs)
@@ -156,19 +159,19 @@ class BaseModel():
 
             if self.__class__.__name__=="ContinualLearningModel_Store":
                 original_feature_vec = self.tag_dict[tag]["feature_vec"]
-                new_feature_vec = original_feature_vec + calc_target_offset(original_feature_vec, train_feature_vecs[indexs].mean(dim=0), self.tag_dict[tag]["time"])
+                new_feature_vec = original_feature_vec + calc_target_offset(original_feature_vec, train_feature_vecs[indexs].detach().mean(dim=0), self.tag_dict[tag]["time"])
                 self.tag_dict[tag]["feature_vec"] = new_feature_vec
 
         self.cls_optimizer.zero_grad()
-        loss=self.cls_criterion(original_tag_vecs, output_tag_vecs)
+        loss=self.cls_criterion(output_tag_vecs, original_tag_vecs)
+        self.loss_dict["Classifier Batch Train Loss"].append((self.iteration, loss.tolist()))
         loss.backward()
         self.cls_optimizer.step()
-
-        return loss.tolist()
 
     def predict(self, sample_list, top_num=1):
         if sample_list:
             self.cls.eval()
+            self.fxm.eval()
             with torch.no_grad():
                 feature_vecs=[]
                 for i in sample_list:
@@ -199,9 +202,10 @@ class ContinualLearningModel_Store(BaseModel):
     
     def continual_forward(self, train_text, train_tag):
         "单样本，正向训练，储存样本回放"
-        self.epoch+=1
+        self.iteration+=1
 
-        train_feature_vec=self.fxm(train_text).detach() # 这里就detach掉，BERT是不用训练的，LSTM的话怎么弄
+        self.fxm.train()
+        train_feature_vec=self.fxm(train_text)
 
         # 如果tag_dict中没有该tag，就用网络的输出作为该tag的初始tag_vec
         if not self.tag_dict.get(train_tag):
@@ -240,7 +244,7 @@ class ContinualLearningModel_Store(BaseModel):
                 # 训练Classifier
                 self.cls_optimizer.zero_grad()
                 loss=self.cls_criterion(output_tag_vec, target_tag_vec)
-                self.loss_dict["Classifier Continual Single Train Loss"].append((self.epoch, loss.tolist()))
+                self.loss_dict["Classifier Continual Single Train Loss"].append((self.iteration, loss.tolist()))
                 loss.backward()
                 self.cls_optimizer.step()
             
@@ -273,7 +277,7 @@ class ContinualLearningModel_Store(BaseModel):
                 # 训练Classifier
                 self.cls_optimizer.zero_grad()
                 loss=self.cls_criterion(output_tag_vecs, target_tag_vecs)
-                self.loss_dict["Classifier Continual Attach Train Loss"].append((self.epoch, loss.tolist()))
+                self.loss_dict["Classifier Continual Attach Train Loss"].append((self.iteration, loss.tolist()))
                 loss.backward()
                 self.cls_optimizer.step()
 
@@ -283,7 +287,7 @@ class ContinualLearningModel_Store(BaseModel):
             # 实验表明feature_vec用calc_target_offset更新后的效果更好
             # self.tag_dict[train_tag]["feature_vec"]=train_feature_vec.detach().reshape(-1)
             original_feature_vec=self.tag_dict[train_tag]["feature_vec"].reshape(1,-1)
-            new_feature_vec = original_feature_vec + calc_target_offset(original_feature_vec, train_feature_vec, self.tag_dict[train_tag]["time"])
+            new_feature_vec = original_feature_vec + calc_target_offset(original_feature_vec, train_feature_vec.detach(), self.tag_dict[train_tag]["time"])
             self.tag_dict[train_tag]["feature_vec"]=new_feature_vec.reshape(-1)
     
     def continual_backward(self, train_text, train_tag):
@@ -291,7 +295,8 @@ class ContinualLearningModel_Store(BaseModel):
         
         # 这里和forward的训练方法大致一样，区别是：target_tag_vecs是反方向的
 
-        train_feature_vec=self.fxm(train_text).detach() # 这里就detach掉，BERT是不用训练的，LSTM的话怎么弄
+        self.fxm.train()
+        train_feature_vec=self.fxm(train_text)
 
         # 堆叠其他tag的tag_vec
         # 堆叠其他tag的feature_vec
@@ -375,31 +380,19 @@ class ContinualLearningModel_Generate(BaseModel):
     
     def continual_forward(self, train_text, train_tag):
         "单样本，正向训练，生成旧样本回放"
-        self.epoch+=1
+        self.iteration+=1
 
         def train_generator(tag_vec, target_feature_vec):
-            #### 没用了
-            #### 若存储多个真实的feature_vec来陪练Generator，那还不如直接用存储的feature_vec对Classifier进行陪练
-            # 用一些tag的feature_vecs训练Generator
-            # tag_vecs=[]
-            # target_feature_vecs=[]
-            # for tag, value in random.sample(list(self.tag_dict.items()), min(len(self.tag_dict), self.TRAIN_ALONG) ): # 随机取TRAIN_ALONG个来伴随训练，太多了的话内存不够用
-            #     tag_vecs.append(value["tag_vec"])
-            #     target_feature_vecs.append(self.feature_dict[tag])
-            # tag_vecs=torch.stack(tag_vecs)
-            # target_feature_vecs=torch.stack(target_feature_vecs)
-            ####
-
             # 单样本训练Generator
             self.gen.train()
             output_feature_vecs=self.gen(tag_vec)
             self.gen_optimizer.zero_grad()
             loss=self.gen_criterion(output_feature_vecs, target_feature_vec)
             loss.backward()
-            self.loss_dict["Generator Continual Single Train Loss"].append((self.epoch, loss.tolist()))
+            self.loss_dict["Generator Continual Single Train Loss"].append((self.iteration, loss.tolist()))
             self.gen_optimizer.step()
 
-        train_feature_vec=self.fxm(train_text).detach() # 这里就detach掉，BERT是不用训练的，LSTM的话怎么弄
+        train_feature_vec=self.fxm(train_text)
 
         # 如果tag_dict中没有该tag，就用网络的输出作为该tag的初始tag_vec
         if not self.tag_dict.get(train_tag):
@@ -441,7 +434,7 @@ class ContinualLearningModel_Generate(BaseModel):
 
                 self.cls_optimizer.zero_grad()
                 loss=self.cls_criterion(output_tag_vec, target_tag_vec)
-                self.loss_dict["Classifier Continual Single Train Loss"].append((self.epoch, loss.tolist()))
+                self.loss_dict["Classifier Continual Single Train Loss"].append((self.iteration, loss.tolist()))
                 loss.backward()
                 self.cls_optimizer.step()
 
@@ -483,7 +476,7 @@ class ContinualLearningModel_Generate(BaseModel):
                 
                 self.cls_optimizer.zero_grad()
                 loss=self.cls_criterion(output_tag_vecs, target_tag_vecs)
-                self.loss_dict["Classifier Continual Attach Train Loss"].append((self.epoch, loss.tolist()))
+                self.loss_dict["Classifier Continual Attach Train Loss"].append((self.iteration, loss.tolist()))
                 loss.backward()
                 self.cls_optimizer.step()
 
@@ -494,7 +487,7 @@ class ContinualLearningModel_Generate(BaseModel):
         
         # 这里和forward的训练方法大致一样，区别是：target_tag_vecs是反方向的，并且不包括对generator的训练
 
-        train_feature_vec=self.fxm(train_text).detach() # 这里就detach掉，BERT是不用训练的，LSTM的话怎么弄
+        train_feature_vec=self.fxm(train_text)
 
         # 堆叠其他tag的vec
         other_tag_vecs=[]
