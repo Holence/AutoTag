@@ -318,45 +318,43 @@ class MainWindow(DTSession.DTMainSession):
             return
         
         s=""
-        total=0
-        total_correct=0
+        acc_list=[]
         for key, value in tqdm(self.train_dict.items()):
-            total+=len(value)
-            current_correct=0
+            correct=0
             pred_tags_list=self.Model.predict(value)
             for pred_tags in pred_tags_list:
                 if key in pred_tags:
-                    total_correct+=1
-                    current_correct+=1
-            acc=current_correct/len(value)
+                    correct+=1
+            acc=correct/len(value)
             self.acc_dict[key+"_train"].append(acc)
+            acc_list.append(acc)
             s+="Train Prediction for %10s ---- %.2f%%\n"%(key, acc*100)
 
+        average_acc=sum(acc_list)/len(acc_list)
         if return_string_and_acc==True:
-            return s, total_correct/total
+            return s, average_acc
         else:
-            print(s, total_correct/total)
+            print(s, average_acc)
     
     def predict_testset(self, return_string_and_acc=False):
         if not self.checkModel():
             return
         
         s=""
-        total=0
-        total_correct=0
+        acc_list=[]
         for key, value in tqdm(self.test_dict.items()):
-            total+=len(value)
-            current_correct=0
+            correct=0
             pred_tags_list=self.Model.predict(value)
             for pred_tags in pred_tags_list:
                 if key in pred_tags:
-                    total_correct+=1
-                    current_correct+=1
-            acc=current_correct/len(value)
+                    correct+=1
+            acc=correct/len(value)
             self.acc_dict[key+"_test"].append(acc)
+            acc_list.append(acc)
             s+="Test Prediction for %10s ---- %.2f%%\n"%(key, acc*100)
-        
+
+        average_acc=sum(acc_list)/len(acc_list)
         if return_string_and_acc==True:
-            return s, total_correct/total
+            return s, average_acc
         else:
-            print(s, total_correct/total)
+            print(s, average_acc)
