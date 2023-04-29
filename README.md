@@ -22,6 +22,4 @@ Continual Learning Model for Multi-class Text Classification base on Replay Meth
 
 ## ToDo
 
-- self.lm.eval()要加吗
-- Generator的两种loss
 - 修LSTM

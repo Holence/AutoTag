@@ -118,7 +118,7 @@ class MainWindow(DTSession.DTMainSession):
         self.module.textBrowser_res.append(s)
         s, test_acc = self.predict_testset(return_string_and_acc=True)
         self.module.textBrowser_res.append(s)
-        self.module.label_acc.setText("Train acc: %.2f%%  Test acc: %.2f%%"%(train_acc*100, test_acc*100))
+        self.module.label_acc.setText("Train Average Acc: %.2f%%\nTest Average Acc: %.2f%%"%(train_acc*100, test_acc*100))
     
     def plot(self):
         plt.close('all')

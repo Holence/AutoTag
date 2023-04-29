@@ -36,11 +36,10 @@ class BaseModel():
             self.loss_dict=torch.load(f"{self.save_path}/loss_dict.pt")
         else:
             self.loss_dict={
-                "Classifier Batch Train Loss":[],
-                "Classifier Continual Single Train Loss":[],
-                "Classifier Continual Attach Train Loss":[],
-                "Classifier Continual Baseline Train Loss":[],
-                "Generator Continual Single Train Loss":[],
+                "Classifier Batch":[],
+                "Classifier Continual Baseline":[],
+                "Classifier Continual":[],
+                "Generator Continual":[],
             }
     
         self.iteration=0
@@ -84,7 +83,7 @@ class BaseModel():
 
             self.cls_optimizer.zero_grad()
             loss=self.cls_criterion(output_tag_vec, target_tag_vec)
-            self.loss_dict["Classifier Continual Baseline Train Loss"].append((self.iteration, loss.tolist()))
+            self.loss_dict["Classifier Continual Baseline"].append((self.iteration, loss.tolist()))
             loss.backward()
             self.cls_optimizer.step()
 
@@ -164,7 +163,7 @@ class BaseModel():
 
         self.cls_optimizer.zero_grad()
         loss=self.cls_criterion(output_tag_vecs, original_tag_vecs)
-        self.loss_dict["Classifier Batch Train Loss"].append((self.iteration, loss.tolist()))
+        self.loss_dict["Classifier Batch"].append((self.iteration, loss.tolist()))
         loss.backward()
         self.cls_optimizer.step()
 
@@ -244,7 +243,7 @@ class ContinualLearningModel_Store(BaseModel):
                 # 训练Classifier
                 self.cls_optimizer.zero_grad()
                 loss=self.cls_criterion(output_tag_vec, target_tag_vec)
-                self.loss_dict["Classifier Continual Single Train Loss"].append((self.iteration, loss.tolist()))
+                self.loss_dict["Classifier Continual"].append((self.iteration, loss.tolist()))
                 loss.backward()
                 self.cls_optimizer.step()
             
@@ -277,7 +276,7 @@ class ContinualLearningModel_Store(BaseModel):
                 # 训练Classifier
                 self.cls_optimizer.zero_grad()
                 loss=self.cls_criterion(output_tag_vecs, target_tag_vecs)
-                self.loss_dict["Classifier Continual Attach Train Loss"].append((self.iteration, loss.tolist()))
+                self.loss_dict["Classifier Continual"].append((self.iteration, loss.tolist()))
                 loss.backward()
                 self.cls_optimizer.step()
 
@@ -382,15 +381,27 @@ class ContinualLearningModel_Generate(BaseModel):
         "单样本，正向训练，生成旧样本回放"
         self.iteration+=1
 
-        def train_generator(tag_vec, target_feature_vec):
+        def train_generator(tag_vec, target_feature_vec, cls_loss_1=None):
             # 单样本训练Generator
             self.gen.train()
             output_feature_vecs=self.gen(tag_vec)
             self.gen_optimizer.zero_grad()
-            loss=self.gen_criterion(output_feature_vecs, target_feature_vec)
-            loss.backward()
-            self.loss_dict["Generator Continual Single Train Loss"].append((self.iteration, loss.tolist()))
+            gen_loss=self.gen_criterion(output_feature_vecs, target_feature_vec)
+            gen_loss.backward()
+            self.loss_dict["Generator Continual"].append((self.iteration, gen_loss.tolist()))
             self.gen_optimizer.step()
+
+            self.cls.train()
+            self.cls_optimizer.zero_grad()
+            output_tag_vec=self.cls(output_feature_vecs.detach())
+            cls_loss_2=self.cls_criterion(output_tag_vec, tag_vec)
+            if cls_loss_1:
+                cls_loss = cls_loss_1 + cls_loss_2
+            else:
+                cls_loss = cls_loss_2
+            self.loss_dict["Classifier Continual"].append((self.iteration, cls_loss.tolist()))
+            cls_loss.backward()
+            self.cls_optimizer.step()
 
         train_feature_vec=self.fxm(train_text)
 
@@ -404,7 +415,6 @@ class ContinualLearningModel_Generate(BaseModel):
                 "tag_vec": tag_vec.detach().reshape(-1),
                 "time": 1
             }
-
             train_generator(self.tag_dict[train_tag]["tag_vec"], train_feature_vec.detach().reshape(-1))
 
         # 如果tag_dict有该tag
@@ -432,13 +442,8 @@ class ContinualLearningModel_Generate(BaseModel):
                 self.tag_dict[train_tag]["tag_vec"]=target_tag_vec.reshape(-1)
                 self.tag_dict[train_tag]["time"]+=1
 
-                self.cls_optimizer.zero_grad()
                 loss=self.cls_criterion(output_tag_vec, target_tag_vec)
-                self.loss_dict["Classifier Continual Single Train Loss"].append((self.iteration, loss.tolist()))
-                loss.backward()
-                self.cls_optimizer.step()
-
-                train_generator(self.tag_dict[train_tag]["tag_vec"], train_feature_vec.detach().reshape(-1))
+                train_generator(self.tag_dict[train_tag]["tag_vec"], train_feature_vec.detach().reshape(-1), loss)
             
             # 如果有其他tag的tag_vec
             else:
@@ -474,13 +479,8 @@ class ContinualLearningModel_Generate(BaseModel):
                 # 因为在classifier中current text的embedding放在了最后一个，这里也把current tag的vec放在最后一个
                 target_tag_vecs=torch.cat([ other_tag_vecs, target_tag_vec ])
                 
-                self.cls_optimizer.zero_grad()
                 loss=self.cls_criterion(output_tag_vecs, target_tag_vecs)
-                self.loss_dict["Classifier Continual Attach Train Loss"].append((self.iteration, loss.tolist()))
-                loss.backward()
-                self.cls_optimizer.step()
-
-                train_generator(self.tag_dict[train_tag]["tag_vec"], train_feature_vec.detach().reshape(-1))
+                train_generator(self.tag_dict[train_tag]["tag_vec"], train_feature_vec.detach().reshape(-1), loss)
     
     def continual_backward(self, train_text, train_tag):
         "单样本，反向训练，生成旧样本回放"
