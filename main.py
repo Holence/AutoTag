@@ -8,15 +8,14 @@ app.setApplicationName("AutoTag")
 app.setWindowIcon(DTIcon.HoloIcon1())
 app.setAuthor("Holence")
 app.setApplicationVersion("1.0.0.0")
-app.setLoginEnable(False)
 
 session=MainWindow(app)
 
-# session.setModel("BERT", "Generate")
+set_seed(114514)
 session.setModel("BERT", "Store")
+# session.setModel("BERT", "Generate")
+# session.setModel("LSTM", "Store")
+# session.setModel("LSTM", "Generate")
 
 app.setMainSession(session)
-
-set_seed(86532)
-
 app.run()

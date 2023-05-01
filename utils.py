@@ -165,10 +165,13 @@ def pre_process(content):
     return content_str
 
 def calc_target_offset(orgin_vec, output_vec, times, forward=True):
-    TARGET_VEC_INIT_DEIVATION=0.3
-    TARGET_VEC_DECAY_RATE=0.8
-
-    offset=(output_vec-orgin_vec)*TARGET_VEC_INIT_DEIVATION*(TARGET_VEC_DECAY_RATE**times)
+    TARGET_VEC_INIT_DEIVATION=0.5
+    TARGET_VEC_DECAY_RATE=0.95
+    TARGET_VEC_MAX_DEIVATION=0.2
+    ratio=TARGET_VEC_INIT_DEIVATION*(TARGET_VEC_DECAY_RATE**times)
+    if ratio<TARGET_VEC_MAX_DEIVATION:
+        ratio=TARGET_VEC_MAX_DEIVATION
+    offset=(output_vec-orgin_vec)*ratio
     if forward:
         return offset
     else:

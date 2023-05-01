@@ -21,22 +21,24 @@ class MainWindow(DTSession.DTMainSession):
         self.loadCorpus()
         
         if self.lm_model=="LSTM":
-            pass
+            from LSTM import LSTM, Classifier, Generator
+            LanguageModel = LSTM
         elif self.lm_model=="BERT":
             from Bert import Bert, Classifier, Generator
+            LanguageModel = Bert
         else:
             raise("Wrong lm_model")
 
         if self.cl_method=="Store":
             from ContinualLearning import ContinualLearningModel_Store
-            self.Model=ContinualLearningModel_Store(Bert, Classifier, 0.0005, 10)
+            self.CL_Model=ContinualLearningModel_Store(LanguageModel, Classifier, 0.0005, 10)
         elif self.cl_method=="Generate":
             from ContinualLearning import ContinualLearningModel_Generate
-            self.Model=ContinualLearningModel_Generate(Bert, Classifier, 0.0005, 10, Generator, 0.0005)
+            self.CL_Model=ContinualLearningModel_Generate(LanguageModel, Classifier, 0.0005, 10, Generator, 0.0005)
         else:
             raise("Wrong cl_method")
 
-        self.app.setApplicationName(self.app.applicationName()+" - %s"%self.Model.__class__.__name__)
+        self.app.setApplicationName(f"{self.app.applicationName()} - {LanguageModel.__name__} - {self.CL_Model.__class__.__name__}")
 
         self.acc_dict={}
         for tag in self.train_dict:
@@ -54,19 +56,7 @@ class MainWindow(DTSession.DTMainSession):
 
         lm_model (str): 
             1) "LSTM"
-                train VecNet:
-                    from pretrained Word2Vec get Word Embeddings
-                    put Word Embeddings into LSTM get Sentence Embeddings
-                    put Sentence Embeddings into LSTM get Tag Vector
-                train GenNet:
-                    put Tag Vector into Linear+LSTM+Linear get Generated Word Embeddings
-            
             2) "BERT"
-                train Classifier:
-                    from pretrained BERT get Sentence Embeddings
-                    put Sentence Embeddings into Linear get Tag Vector
-                train Generator:
-                    put Tag Vector into Linear get Generated Word Embeddings
         cl_method (str): 
             1) "Store"
             2) "Generate"
@@ -95,15 +85,22 @@ class MainWindow(DTSession.DTMainSession):
         self.module.pushButton_plot2D.clicked.connect(self.plot2D)
         self.module.pushButton_eval.clicked.connect(self.evaluate)
         self.module.pushButton_save.clicked.connect(self.saveModel)
+
+        self.module.actionPredict.triggered.connect(self.predict)
+        self.addAction(self.module.actionPredict)
+    
+    def initializeMenu(self):
+        self.addActionToMainMenu(self.module.actionPredict)
+        super().initializeMenu()
     
     def saveModel(self):
-        self.Model.save()
+        self.CL_Model.save()
     
     def reset(self):
-        self.Model.initilize()
+        self.CL_Model.initilize()
     
     def checkModel(self):
-        if len(self.Model.tag_dict)==0:
+        if len(self.CL_Model.tag_dict)==0:
             print("There isn't any tag_vec in tag_dict! Please train first!")
             return False
         else:
@@ -126,9 +123,9 @@ class MainWindow(DTSession.DTMainSession):
 
         plt.figure()
         keys=[]
-        for key in self.Model.loss_dict.keys():
-            if self.Model.loss_dict[key]:
-                t=torch.tensor(self.Model.loss_dict[key])
+        for key in self.CL_Model.loss_dict.keys():
+            if self.CL_Model.loss_dict[key]:
+                t=torch.tensor(self.CL_Model.loss_dict[key])
                 plt.plot(t[:,0], t[:,1])
                 keys.append(key)
         plt.legend(keys)
@@ -198,8 +195,8 @@ class MainWindow(DTSession.DTMainSession):
         if not self.checkModel():
             return
         
-        X=np.stack([v["tag_vec"].cpu() for v in self.Model.tag_dict.values()]) 
-        label = [k for k in self.Model.tag_dict.keys()]
+        X=np.stack([v["tag_vec"].cpu() for v in self.CL_Model.tag_dict.values()]) 
+        label = [k for k in self.CL_Model.tag_dict.keys()]
 
         loc = scaledown(X, iter=30000, rand_time=650, verbose=1)
         x = loc[:,0]
@@ -220,27 +217,26 @@ class MainWindow(DTSession.DTMainSession):
         else:
             update_predict=False
         
-        self.Model.continual_forward(current_text, current_tag)
+        self.CL_Model.continual_forward(current_text, current_tag)
         
         if update_predict:
             self.predict(None)
     
     def backward(self):
-        
         current_text=self.module.plainTextEdit_train_text.toPlainText()
         current_tag=self.module.lineEdit_train_tag.text()
-        if type(self.Model.tag_dict.get(current_tag))==type(None):
+        if type(self.CL_Model.tag_dict.get(current_tag))==type(None):
             DTFrame.DTMessageBox(self,"Warning","%s is not in tag_dict, please forward train first!"%current_tag)
             return
             
-        self.Model.continual_backward(current_text, current_tag)
+        self.CL_Model.continual_backward(current_text, current_tag)
         
         self.predict(None)
     
     def continual_train_basic(self):
         random.shuffle(self.train_pipe)
         for i in tqdm(self.train_pipe):
-            self.Model.continual_forward_baseline(i[0],i[1])
+            self.CL_Model.continual_forward_baseline(i[0],i[1])
         self.plot()
 
     def continual_train(self):
@@ -250,11 +246,11 @@ class MainWindow(DTSession.DTMainSession):
         self.plot()
 
     def batch_train(self):
-        batch_size=16
+        batch_size=self.module.spinBox_batchsize.value()
         random.shuffle(self.train_pipe)
         for i in tqdm(range(0, len(self.train_pipe)+batch_size, batch_size)):
             if self.train_pipe[i:i+batch_size]:
-                self.Model.batch_train(self.train_pipe[i:i+batch_size])
+                self.CL_Model.batch_train(self.train_pipe[i:i+batch_size])
         self.plot()
 
     def predict(self, text):
@@ -263,7 +259,7 @@ class MainWindow(DTSession.DTMainSession):
             return
         
         if type(text)==str:
-            return self.Model.predict([text], self.module.spinBox_top.value())
+            return self.CL_Model.predict([text], self.module.spinBox_top.value())
         else:
             text=self.module.plainTextEdit_pred_text.toPlainText()
             scroll=self.module.textBrowser_res.verticalScrollBar().value()
@@ -285,7 +281,7 @@ class MainWindow(DTSession.DTMainSession):
                     
                     original_text=text
                     
-                    result=self.Model.predict([text], -1)[0]
+                    result=self.CL_Model.predict([text], -1)[0]
                     if result:
                         pred_prob=""
                         for i in result:
@@ -319,7 +315,7 @@ class MainWindow(DTSession.DTMainSession):
         acc_list=[]
         for key, value in tqdm(self.train_dict.items()):
             correct=0
-            pred_tags_list=self.Model.predict(value, self.module.spinBox_top.value())
+            pred_tags_list=self.CL_Model.predict(value, self.module.spinBox_top.value())
             for pred_tags in pred_tags_list:
                 if key in pred_tags:
                     correct+=1
@@ -342,7 +338,7 @@ class MainWindow(DTSession.DTMainSession):
         acc_list=[]
         for key, value in tqdm(self.test_dict.items()):
             correct=0
-            pred_tags_list=self.Model.predict(value, self.module.spinBox_top.value())
+            pred_tags_list=self.CL_Model.predict(value, self.module.spinBox_top.value())
             for pred_tags in pred_tags_list:
                 if key in pred_tags:
                     correct+=1

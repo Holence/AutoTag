@@ -48,6 +48,7 @@ class BaseModel():
         torch.save(self.cls.state_dict(), f"{self.save_path}/classifier_para.pt")
         torch.save(self.tag_dict, f"{self.save_path}/tag_dict.pt")
         torch.save(self.loss_dict, f"{self.save_path}/loss_dict.pt")
+        self.fxm.save()
 
     def continual_forward_baseline(self, train_text, train_tag):
         "单样本，正向训练，不带任何持续学习优化算法，作为效果比较的底线"

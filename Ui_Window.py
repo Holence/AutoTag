@@ -18,6 +18,8 @@ class Ui_Window(object):
         if not Window.objectName():
             Window.setObjectName(u"Window")
         Window.resize(917, 527)
+        self.actionPredict = QAction(Window)
+        self.actionPredict.setObjectName(u"actionPredict")
         self.horizontalLayout = QHBoxLayout(Window)
         self.horizontalLayout.setObjectName(u"horizontalLayout")
         self.verticalLayout = QVBoxLayout()
@@ -162,10 +164,6 @@ class Ui_Window(object):
 
         self.verticalLayout_3 = QVBoxLayout()
         self.verticalLayout_3.setObjectName(u"verticalLayout_3")
-        self.verticalSpacer = QSpacerItem(20, 40, QSizePolicy.Minimum, QSizePolicy.Expanding)
-
-        self.verticalLayout_3.addItem(self.verticalSpacer)
-
         self.pushButton_load_corpus = QPushButton(Window)
         self.pushButton_load_corpus.setObjectName(u"pushButton_load_corpus")
         sizePolicy1.setHeightForWidth(self.pushButton_load_corpus.sizePolicy().hasHeightForWidth())
@@ -179,6 +177,19 @@ class Ui_Window(object):
         self.pushButton_reset.setSizePolicy(sizePolicy1)
 
         self.verticalLayout_3.addWidget(self.pushButton_reset)
+
+        self.verticalSpacer = QSpacerItem(20, 40, QSizePolicy.Minimum, QSizePolicy.Expanding)
+
+        self.verticalLayout_3.addItem(self.verticalSpacer)
+
+        self.spinBox_batchsize = QSpinBox(Window)
+        self.spinBox_batchsize.setObjectName(u"spinBox_batchsize")
+        self.spinBox_batchsize.setMinimum(4)
+        self.spinBox_batchsize.setMaximum(512)
+        self.spinBox_batchsize.setSingleStep(8)
+        self.spinBox_batchsize.setValue(16)
+
+        self.verticalLayout_3.addWidget(self.spinBox_batchsize)
 
         self.pushButton_batch_train = QPushButton(Window)
         self.pushButton_batch_train.setObjectName(u"pushButton_batch_train")
@@ -243,6 +254,10 @@ class Ui_Window(object):
 
     def retranslateUi(self, Window):
         Window.setWindowTitle(QCoreApplication.translate("Window", u"Form", None))
+        self.actionPredict.setText(QCoreApplication.translate("Window", u"Predict", None))
+#if QT_CONFIG(shortcut)
+        self.actionPredict.setShortcut(QCoreApplication.translate("Window", u"Ctrl+Return", None))
+#endif // QT_CONFIG(shortcut)
         self.label_3.setText(QCoreApplication.translate("Window", u"Train Text", None))
         self.pushButton_forward.setText(QCoreApplication.translate("Window", u" Forward Train ", None))
         self.pushButton_backward.setText(QCoreApplication.translate("Window", u" Backward Train ", None))
