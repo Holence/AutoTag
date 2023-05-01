@@ -16,9 +16,24 @@ Continual Learning Model for Multi-class Text Classification base on Replay Meth
 ## Awareness
 
 - calc_target_offset有很大的帮助
-- Generator很难训练好，甚至比没有任何优化的持续学习都差（把test.ipynb的实验结果放到论文里）：因为Generator是单样本训练，所以在没有新样本时，将不会再有真实的feature_vec进行复习。若存储多个真实的feature_vec来陪练Generator，那还不如直接用存储的feature_vec对Classifier进行陪练
+- Generator很难训练好：因为Generator是单样本训练，所以在没有新样本时，将不会再有真实的feature_vec进行复习。若存储多个真实的feature_vec来陪练Generator，那还不如直接用存储的feature_vec对Classifier进行陪练
 - 所以干脆存储具有代表性的feature_vec
 - 样本数大一些，结果比较好
+
+```
+INPUT_DIM=3
+CLASS_NUM=15
+SAMPLE_NUM=10
+SAMPLE_NUM_RANGE=...
+MEAN_ARRANGE=100
+STD_ARRANGE=5
+SAMPLE_SHIFTING=...
+```
+
+| 无优化方法的持续学习与批量学习的Accuracy比较 | 每类的样本数量均匀<br />`SAMPLE_NUM_RANGE=0` | 每类的样本数量不均匀<br />`SAMPLE_NUM_RANGE=0.5` |
+| -------------------------------------------- | -------------------------------------------- | ------------------------------------------------ |
+| 样本分布不漂移<br />`SAMPLE_SHIFTING=False`  | 基本持平                                     | 基本持平                                         |
+| 样本分布漂移<br />`SAMPLE_SHIFTING=True`     | 些许差距                                     | 较大差距                                         |
 
 ## ToDo
 
