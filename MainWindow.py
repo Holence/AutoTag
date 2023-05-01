@@ -47,7 +47,7 @@ class MainWindow(DTSession.DTMainSession):
         super().initialize()
     
     def loadCorpus(self):
-        self.train_pipe, self.train_dict, self.test_dict=load_corpus("corpus", 0.5)
+        self.train_pipe, self.train_dict, self.test_dict=load_corpus("corpus", 0.2)
 
     def setModel(self, lm_model: str, cl_method: str):
         """设置选用的模型
@@ -319,7 +319,7 @@ class MainWindow(DTSession.DTMainSession):
         acc_list=[]
         for key, value in tqdm(self.train_dict.items()):
             correct=0
-            pred_tags_list=self.Model.predict(value)
+            pred_tags_list=self.Model.predict(value, self.module.spinBox_top.value())
             for pred_tags in pred_tags_list:
                 if key in pred_tags:
                     correct+=1
@@ -342,7 +342,7 @@ class MainWindow(DTSession.DTMainSession):
         acc_list=[]
         for key, value in tqdm(self.test_dict.items()):
             correct=0
-            pred_tags_list=self.Model.predict(value)
+            pred_tags_list=self.Model.predict(value, self.module.spinBox_top.value())
             for pred_tags in pred_tags_list:
                 if key in pred_tags:
                     correct+=1
