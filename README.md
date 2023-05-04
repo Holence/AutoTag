@@ -1,19 +1,24 @@
 # AutoTag
 
-Continual Learning Model for Multi-class Text Classification base on Replay Method
+Continual Learning Model for Multi-class Text Classification based on Replay Method
 
 ## Features
 
-- use GUI to train and predict
-- train new texts with shifted domain (Domain Incremental Learning)
-- dynamically add new text categories (Class Incremental Learning)
+- A general Data-IL classification continual learning framework with built-in Replay Method (Storing Feature Vecs \ Generating Pseudo Feature Vecs)
+- Learn new samples while domain shifting (Domain Incremental Learning)
+- Dynamically add new categories (Class Incremental Learning)
+- A simple GUI
 
-## Embeddings
+## Usage
+
+run `main.py` to play with continual learning text classification (the embeddings below are needed)
 
 - [Chinese-Word-Vectors](https://github.com/Embedding/Chinese-Word-Vectors)
 - [Chinese-BERT-wwm](https://github.com/ymcui/Chinese-BERT-wwm)
 
-## Awareness
+or run `experiment.ipynb` to see more general usage
+
+## Thought
 
 - calc_target_offset有很大的帮助
 - Generator很难训练好：因为Generator是单样本训练，所以在没有新样本时，将不会再有真实的feature_vec进行复习。若存储多个真实的feature_vec来陪练Generator，那还不如直接用存储的feature_vec对Classifier进行陪练
@@ -34,7 +39,3 @@ SAMPLE_SHIFTING=...
 | -------------------------------------------- | -------------------------------------------- | ------------------------------------------------ |
 | 样本分布不漂移<br />`SAMPLE_SHIFTING=False`  | 基本持平                                     | 基本持平                                         |
 | 样本分布漂移<br />`SAMPLE_SHIFTING=True`     | 些许差距                                     | 较大差距                                         |
-
-## ToDo
-
-- 修LSTM
