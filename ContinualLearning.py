@@ -50,12 +50,12 @@ class BaseModel():
         torch.save(self.loss_dict, f"{self.save_path}/loss_dict.pt")
         self.fxm.save()
 
-    def continual_forward_baseline(self, train_text, train_tag):
+    def continual_forward_baseline(self, train_sample, train_tag):
         "单样本，正向训练，不带任何持续学习优化算法，作为效果比较的底线"
         self.iteration+=1
 
         self.fxm.train()
-        train_feature_vec=self.fxm(train_text)
+        train_feature_vec=self.fxm(train_sample)
 
         # 如果tag_dict中没有该tag，就用网络的输出作为该tag的初始tag_vec
         if not self.tag_dict.get(train_tag):
@@ -101,25 +101,25 @@ class BaseModel():
         self.iteration+=1
         
         # 遍历一遍训练集中所有的tag，如果tag_dict中没有该tag，就用网络的输出作为该tag的初始tag_vec
-        need_text_tag=[]
+        need_sample_tag=[]
         for tag in set([i[1] for i in train_pipe]):
             if self.tag_dict.get(tag)==None:
-                need_text_tag.append(tag)
-        if need_text_tag:
+                need_sample_tag.append(tag)
+        if need_sample_tag:
             temp_train_dict={}
             for i in train_pipe:
-                text=i[0]
+                sample=i[0]
                 tag=i[1]
-                if tag in need_text_tag:
+                if tag in need_sample_tag:
                     if temp_train_dict.get(tag)==None:
-                        temp_train_dict[tag]=[text]
+                        temp_train_dict[tag]=[sample]
                     else:
-                        temp_train_dict[tag].append(text)
+                        temp_train_dict[tag].append(sample)
             self.cls.eval()
             self.fxm.eval()
             with torch.no_grad():
-                for key, text_list in temp_train_dict.items():
-                    feature_vecs=torch.stack([self.fxm(text).detach() for text in text_list])
+                for key, sample_list in temp_train_dict.items():
+                    feature_vecs=torch.stack([self.fxm(sample).detach() for sample in sample_list])
                     tag_vecs=self.cls(feature_vecs)
                     self.tag_dict[key]={
                         "tag_vec": tag_vecs.mean(dim=0).reshape(-1),
@@ -142,9 +142,9 @@ class BaseModel():
         train_feature_vecs=[]
         original_tag_vecs=[]
         for i in train_pipe:
-            text=i[0]
+            sample=i[0]
             tag=i[1]
-            feature_vec=self.fxm(text).reshape(-1)
+            feature_vec=self.fxm(sample).reshape(-1)
             train_feature_vecs.append(feature_vec)
             original_tag_vecs.append(self.tag_dict[tag]["tag_vec"])
         train_feature_vecs=torch.stack(train_feature_vecs)
@@ -200,12 +200,12 @@ class ContinualLearningModel_Store(BaseModel):
         super().__init__(FeatureExtractionModel, Classifier, CLS_LR)
         self.TRAIN_ALONG=TRAIN_ALONG
     
-    def continual_forward(self, train_text, train_tag):
+    def continual_forward(self, train_sample, train_tag):
         "单样本，正向训练，储存样本回放"
         self.iteration+=1
 
         self.fxm.train()
-        train_feature_vec=self.fxm(train_text)
+        train_feature_vec=self.fxm(train_sample)
 
         # 如果tag_dict中没有该tag，就用网络的输出作为该tag的初始tag_vec
         if not self.tag_dict.get(train_tag):
@@ -263,7 +263,7 @@ class ContinualLearningModel_Store(BaseModel):
                     output_tag_vecs=self.cls(cat_feature_vecs)
                 except:
                     print("ERROR occur in .line1")
-                    print(train_text, train_tag)
+                    print(train_sample, train_tag)
                     return
                 
                 original_tag_vec=self.tag_dict[train_tag]["tag_vec"].reshape(1,-1)
@@ -271,7 +271,7 @@ class ContinualLearningModel_Store(BaseModel):
                 self.tag_dict[train_tag]["tag_vec"]=target_tag_vec.reshape(-1)
 
                 # 把所有的tag domain的vec都弄起来
-                # 因为在classifier中current text的embedding放在了最后一个，这里也把current tag的vec放在最后一个
+                # 因为在classifier中current feature_vec放在了最后一个，这里也把current tag_vec放在最后一个
                 target_tag_vecs=torch.cat([ other_tag_vecs, target_tag_vec ])
                 
                 # 训练Classifier
@@ -290,13 +290,13 @@ class ContinualLearningModel_Store(BaseModel):
             new_feature_vec = original_feature_vec + calc_target_offset(original_feature_vec, train_feature_vec.detach(), self.tag_dict[train_tag]["time"])
             self.tag_dict[train_tag]["feature_vec"]=new_feature_vec.reshape(-1)
     
-    def continual_backward(self, train_text, train_tag):
+    def continual_backward(self, train_sample, train_tag):
         "单样本，反向训练，储存样本回放"
         
         # 这里和forward的训练方法大致一样，区别是：target_tag_vecs是反方向的
 
         self.fxm.train()
-        train_feature_vec=self.fxm(train_text)
+        train_feature_vec=self.fxm(train_sample)
 
         # 堆叠其他tag的tag_vec
         # 堆叠其他tag的feature_vec
@@ -339,7 +339,7 @@ class ContinualLearningModel_Store(BaseModel):
                 output_tag_vecs=self.cls(cat_feature_vecs)
             except:
                 print("ERROR occur in .line2")
-                print(train_text, train_tag)
+                print(train_sample, train_tag)
                 return
             
             original_tag_vec=self.tag_dict[train_tag]["tag_vec"].reshape(1,-1)
@@ -378,7 +378,7 @@ class ContinualLearningModel_Generate(BaseModel):
         super().save()
         torch.save(self.gen.state_dict(), f"{self.save_path}/generator_para.pt")
     
-    def continual_forward(self, train_text, train_tag):
+    def continual_forward(self, train_sample, train_tag):
         "单样本，正向训练，生成旧样本回放"
         self.iteration+=1
 
@@ -404,7 +404,7 @@ class ContinualLearningModel_Generate(BaseModel):
             cls_loss.backward()
             self.cls_optimizer.step()
 
-        train_feature_vec=self.fxm(train_text)
+        train_feature_vec=self.fxm(train_sample)
 
         # 如果tag_dict中没有该tag，就用网络的输出作为该tag的初始tag_vec
         if not self.tag_dict.get(train_tag):
@@ -464,7 +464,7 @@ class ContinualLearningModel_Generate(BaseModel):
                     output_tag_vecs=self.cls(cat_feature_vecs)
                 except:
                     print("ERROR occur in .line1")
-                    print(train_text, train_tag)
+                    print(train_sample, train_tag)
                     return
                 
                 original_tag_vec=self.tag_dict[train_tag]["tag_vec"].reshape(1,-1)
@@ -477,18 +477,18 @@ class ContinualLearningModel_Generate(BaseModel):
                 self.tag_dict[train_tag]["time"]+=1
 
                 # 把所有的tag domain的vec都弄起来
-                # 因为在classifier中current text的embedding放在了最后一个，这里也把current tag的vec放在最后一个
+                # 因为在classifier中current feature_vec放在了最后一个，这里也把current tag_vec放在最后一个
                 target_tag_vecs=torch.cat([ other_tag_vecs, target_tag_vec ])
                 
                 loss=self.cls_criterion(output_tag_vecs, target_tag_vecs)
                 train_generator(self.tag_dict[train_tag]["tag_vec"], train_feature_vec.detach().reshape(-1), loss)
     
-    def continual_backward(self, train_text, train_tag):
+    def continual_backward(self, train_sample, train_tag):
         "单样本，反向训练，生成旧样本回放"
         
         # 这里和forward的训练方法大致一样，区别是：target_tag_vecs是反方向的，并且不包括对generator的训练
 
-        train_feature_vec=self.fxm(train_text)
+        train_feature_vec=self.fxm(train_sample)
 
         # 堆叠其他tag的vec
         other_tag_vecs=[]
@@ -514,7 +514,7 @@ class ContinualLearningModel_Generate(BaseModel):
             self.cls_optimizer.step()
         # 如果有其他tag的tag_vec
         else:
-        # 用generator预测生成train_tag之外的其他tag的所对应的embedding作为训练classifier的陪练
+        # 用generator预测生成train_tag之外的其他tag的所对应的feature_vec作为训练classifier的陪练
         # 以应对Catastrophic Forgetting
             
             other_tag_vecs=torch.stack(other_tag_vecs)
@@ -532,7 +532,7 @@ class ContinualLearningModel_Generate(BaseModel):
                 output_tag_vecs=self.cls(cat_feature_vecs)
             except:
                 print("ERROR occur in .line2")
-                print(train_text, train_tag)
+                print(train_sample, train_tag)
                 return
             
             original_tag_vec=self.tag_dict[train_tag]["tag_vec"].reshape(1,-1)
