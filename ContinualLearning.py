@@ -200,6 +200,21 @@ class ContinualLearningModel_Store(BaseModel):
         super().__init__(FeatureExtractionModel, Classifier, CLS_LR)
         self.TRAIN_ALONG=TRAIN_ALONG
     
+    def get_others(self, except_tag):
+        # 堆叠其他tag的tag_vec
+        # 堆叠其他tag的feature_vec
+        other_tag_vecs=[]
+        other_feature_vecs=[]
+        
+        # 两种抽取方法效果差不多
+        # for tag, value in sorted(self.tag_dict.items(), key=lambda x:x[1]["time"])[:min(len(self.tag_dict), self.TRAIN_ALONG)]: # 抽取次数最少的
+        for tag, value in random.sample(list(self.tag_dict.items()), min(len(self.tag_dict), self.TRAIN_ALONG) ): # 随机抽取
+            if tag!=except_tag:
+                other_tag_vecs.append(value["tag_vec"])
+                other_feature_vecs.append(value["feature_vec"])
+        
+        return other_tag_vecs, other_feature_vecs
+        
     def continual_forward(self, train_sample, train_tag):
         "单样本，正向训练，储存样本回放"
         self.iteration+=1
@@ -222,14 +237,7 @@ class ContinualLearningModel_Store(BaseModel):
         # 如果tag_dict有该tag
         else:
 
-            # 堆叠其他tag的tag_vec
-            # 堆叠其他tag的feature_vec
-            other_tag_vecs=[]
-            other_feature_vecs=[]
-            for tag, value in random.sample(list(self.tag_dict.items()), min(len(self.tag_dict), self.TRAIN_ALONG) ): # 随机取TRAIN_ALONG个来伴随训练，太多了的话内存不够用
-                if tag!=train_tag:
-                    other_tag_vecs.append(value["tag_vec"])
-                    other_feature_vecs.append(value["feature_vec"])
+            other_tag_vecs, other_feature_vecs = self.get_others(train_tag)
             
             # 如果没有其他陪练的
             if other_tag_vecs==[]:
@@ -298,14 +306,7 @@ class ContinualLearningModel_Store(BaseModel):
         self.fxm.train()
         train_feature_vec=self.fxm(train_sample)
 
-        # 堆叠其他tag的tag_vec
-        # 堆叠其他tag的feature_vec
-        other_tag_vecs=[]
-        other_feature_vecs=[]
-        for tag, value in random.sample(list(self.tag_dict.items()), min(len(self.tag_dict), self.TRAIN_ALONG) ): # 随机取TRAIN_ALONG个来伴随训练，太多了的话内存不够用
-            if tag!=train_tag:
-                other_tag_vecs.append(value["tag_vec"])
-                other_feature_vecs.append(value["feature_vec"])
+        other_tag_vecs, other_feature_vecs = self.get_others(train_tag)
         
         # 如果没有其他陪练的
         if other_tag_vecs==[]:
@@ -345,8 +346,12 @@ class ContinualLearningModel_Store(BaseModel):
             original_tag_vec=self.tag_dict[train_tag]["tag_vec"].reshape(1,-1)
             
             # 有进有退
-            offset = calc_target_offset(original_tag_vec, output_tag_vecs[-1].detach().reshape(1,-1), self.tag_dict[train_tag]["time"])
-            target_tag_vecs = torch.cat( [other_tag_vecs + offset, original_tag_vec - offset] )
+            # offset = calc_target_offset(original_tag_vec, output_tag_vecs[-1].detach().reshape(1,-1), self.tag_dict[train_tag]["time"])
+            # target_tag_vecs = torch.cat( [other_tag_vecs + offset, original_tag_vec - offset] )
+
+            # 别有进有退了，other_tag_vecs都不去更新。当前的tag_vec退后就行了
+            offset = calc_target_offset(original_tag_vec, output_tag_vecs[-1].detach().reshape(1,-1), self.tag_dict[train_tag]["time"], forward=False)
+            target_tag_vecs = torch.cat( [other_tag_vecs, original_tag_vec + offset] )
             
             self.tag_dict[train_tag]["tag_vec"]=(original_tag_vec - offset).reshape(-1)
             
@@ -364,6 +369,18 @@ class ContinualLearningModel_Generate(BaseModel):
         self.Generator=Generator
         self.GEN_LR=GEN_LR
         super().__init__(FeatureExtractionModel, Classifier, CLS_LR)
+    
+    def get_others(self, except_tag):
+        # 堆叠其他tag的tag_vec
+        other_tag_vecs=[]
+        
+        # 两种抽取方法效果差不多
+        # for tag, value in sorted(self.tag_dict.items(), key=lambda x:x[1]["time"])[:min(len(self.tag_dict), self.TRAIN_ALONG)]: # 抽取次数最少的
+        for tag, value in random.sample(list(self.tag_dict.items()), min(len(self.tag_dict), self.TRAIN_ALONG) ): # 随机抽取
+            if tag!=except_tag:
+                other_tag_vecs.append(value["tag_vec"])
+        
+        return other_tag_vecs
     
     def initilize(self):
         super().initilize()
@@ -424,11 +441,7 @@ class ContinualLearningModel_Generate(BaseModel):
             # -------------------------------------
             # 先用Generator预测生成train_tag之外的其他tag所对应的feature_vec，作为训练Classifier的陪练（以应对Catastrophic Forgetting）
 
-            # 堆叠其他tag的tag_vec
-            other_tag_vecs=[]
-            for tag, value in random.sample(list(self.tag_dict.items()), min(len(self.tag_dict), self.TRAIN_ALONG) ): # 随机取TRAIN_ALONG个来伴随训练，太多了的话内存不够用
-                if tag!=train_tag:
-                    other_tag_vecs.append(value["tag_vec"])
+            other_tag_vecs = self.get_others(train_tag)
             
             # 如果没有其他陪练的
             if other_tag_vecs==[]:
@@ -469,7 +482,7 @@ class ContinualLearningModel_Generate(BaseModel):
                 
                 original_tag_vec=self.tag_dict[train_tag]["tag_vec"].reshape(1,-1)
             
-                # 取original_tag_vec与TARGET_tag_VEC的连线上的一点为优化目标
+                # 取original_tag_vec与target_tag_vec的连线上的一点为优化目标
                 # 取递减偏离的一点
                 target_tag_vec = original_tag_vec + calc_target_offset(original_tag_vec, output_tag_vecs[-1].detach().reshape(1,-1), self.tag_dict[train_tag]["time"])
 
@@ -490,11 +503,7 @@ class ContinualLearningModel_Generate(BaseModel):
 
         train_feature_vec=self.fxm(train_sample)
 
-        # 堆叠其他tag的vec
-        other_tag_vecs=[]
-        for tag,value in random.sample(list(self.tag_dict.items()), min(len(self.tag_dict), self.TRAIN_ALONG) ): # 随机取TRAIN_ALONG个来伴随训练，太多了的话内存不够用
-            if tag!=train_tag:
-                other_tag_vecs.append(value["tag_vec"])
+        other_tag_vecs = self.get_others(train_tag)
         
         # 如果没有其他陪练的
         if other_tag_vecs==[]:
@@ -538,8 +547,12 @@ class ContinualLearningModel_Generate(BaseModel):
             original_tag_vec=self.tag_dict[train_tag]["tag_vec"].reshape(1,-1)
             
             # 有进有退
-            offset = calc_target_offset(original_tag_vec, output_tag_vecs[-1].detach().reshape(1,-1), self.tag_dict[train_tag]["time"])
-            target_tag_vecs = torch.cat( [other_tag_vecs + offset, original_tag_vec - offset] )
+            # offset = calc_target_offset(original_tag_vec, output_tag_vecs[-1].detach().reshape(1,-1), self.tag_dict[train_tag]["time"])
+            # target_tag_vecs = torch.cat( [other_tag_vecs + offset, original_tag_vec - offset] )
+            
+            # 别有进有退了，other_tag_vecs都不去更新。当前的tag_vec退后就行了
+            offset = calc_target_offset(original_tag_vec, output_tag_vecs[-1].detach().reshape(1,-1), self.tag_dict[train_tag]["time"], forward=False)
+            target_tag_vecs = torch.cat( [other_tag_vecs, original_tag_vec + offset] )
             
             self.tag_dict[train_tag]["tag_vec"]=(original_tag_vec - offset).reshape(-1)
             
