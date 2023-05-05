@@ -11,7 +11,7 @@ app.setApplicationVersion("1.0.0.0")
 
 session=MainWindow(app)
 
-set_seed(114514)
+session.setSeed(114514)
 session.setModel("BERT", "Store")
 # session.setModel("BERT", "Generate")
 # session.setModel("LSTM", "Store")

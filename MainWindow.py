@@ -16,8 +16,11 @@ class MainWindow(DTSession.DTMainSession):
     def __init__(self, app: DTAPP):
         super().__init__(app)
         self.lm_model="BERT"
+        self.cl_method="Store"
+        self.seed=114514
     
     def initialize(self):
+        set_seed(self.seed)
         self.loadCorpus()
         
         if self.lm_model=="LSTM":
@@ -51,6 +54,9 @@ class MainWindow(DTSession.DTMainSession):
     def loadCorpus(self):
         self.train_pipe, self.train_dict, self.test_dict=load_corpus("corpus", 0.2)
 
+    def setSeed(self, seed):
+        self.seed=seed
+    
     def setModel(self, lm_model: str, cl_method: str):
         """设置选用的模型
 
@@ -234,23 +240,26 @@ class MainWindow(DTSession.DTMainSession):
         self.predict(None)
     
     def continual_train_basic(self):
-        random.shuffle(self.train_pipe)
-        for i in tqdm(self.train_pipe):
+        set_seed(self.seed)
+        pipe = random.sample(self.train_pipe, len(self.train_pipe))
+        for i in tqdm(pipe):
             self.CL_Model.continual_forward_baseline(i[0],i[1])
         self.plot()
 
     def continual_train(self):
-        random.shuffle(self.train_pipe)
-        for i in tqdm(self.train_pipe):
+        set_seed(self.seed)
+        pipe = random.sample(self.train_pipe, len(self.train_pipe))
+        for i in tqdm(pipe):
             self.forward(i[0],i[1])
         self.plot()
 
     def batch_train(self):
+        set_seed(self.seed)
         batch_size=self.module.spinBox_batchsize.value()
-        random.shuffle(self.train_pipe)
+        pipe = random.sample(self.train_pipe, len(self.train_pipe))
         for i in tqdm(range(0, len(self.train_pipe)+batch_size, batch_size)):
-            if self.train_pipe[i:i+batch_size]:
-                self.CL_Model.batch_train(self.train_pipe[i:i+batch_size])
+            if pipe[i:i+batch_size]:
+                self.CL_Model.batch_train(pipe[i:i+batch_size])
         self.plot()
 
     def predict(self, text):
