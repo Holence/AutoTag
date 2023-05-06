@@ -56,4 +56,5 @@ class Bert(torch.nn.Module):
         inputs=self.tokenizer([text], return_tensors="pt", padding=True, truncation=True)
         inputs.to(self.device)
         output=self.bert(**inputs)
-        return output["pooler_output"]
+        output=output["pooler_output"].reshape(-1)
+        return output

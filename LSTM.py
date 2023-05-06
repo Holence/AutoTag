@@ -120,5 +120,5 @@ class LSTM(torch.nn.Module):
         # 并且通过实验发现，按照下面这样修改后，精度大幅提升
         _, (h_n, c_n) = self.lstm(embedded)
         output = torch.cat((h_n[-2], h_n[-1]), -1)
-        
+        output = output.reshape(-1)
         return output
