@@ -57,8 +57,9 @@ class BaseModel():
         torch.save(self.tag_dict, f"{self.save_path}/tag_dict.pt")
         torch.save(self.loss_dict, f"{self.save_path}/loss_dict.pt")
         self.fxm.save()
-
-    def train_none(self, train_sample, train_tag):
+    
+    def clustering(self, train_sample, train_tag):
+        "不训练，只聚类"
         self.iteration+=1
 
         self.fxm.eval()
@@ -77,6 +78,26 @@ class BaseModel():
             }
             if self.__class__.__name__=="ContinualLearningModel_Store":
                 self.tag_dict[train_tag]["feature_vec"]=train_feature_vec.detach()
+
+        else:
+            self.cls.eval()
+            with torch.no_grad():
+                output_tag_vec=self.cls(train_feature_vec)
+            
+            original_tag_vec=self.tag_dict[train_tag]["tag_vec"]
+            
+            # 取递减偏离的一点
+            target_tag_vec = calc_target_vec(original_tag_vec, output_tag_vec.detach(), self.tag_dict[train_tag]["time"])
+            
+            self.tag_dict[train_tag]["tag_vec"]=target_tag_vec
+            self.tag_dict[train_tag]["time"]+=1
+
+            if self.__class__.__name__=="ContinualLearningModel_Store":
+                # 更新feature_vec
+                # 实验表明feature_vec用calc_target_vec更新后的效果更好
+                original_feature_vec=self.tag_dict[train_tag]["feature_vec"]
+                new_feature_vec = calc_target_vec(original_feature_vec, train_feature_vec.detach(), self.tag_dict[train_tag]["time"])
+                self.tag_dict[train_tag]["feature_vec"]=new_feature_vec
     
     def continual_forward_baseline(self, train_sample, train_tag):
         "单样本，正向训练，不带任何持续学习优化算法，作为效果比较的底线"
@@ -105,7 +126,7 @@ class BaseModel():
             original_tag_vec=self.tag_dict[train_tag]["tag_vec"]
             
             # 取递减偏离的一点
-            target_tag_vec = original_tag_vec + calc_target_offset(original_tag_vec, output_tag_vec.detach(), self.tag_dict[train_tag]["time"])
+            target_tag_vec = calc_target_vec(original_tag_vec, output_tag_vec.detach(), self.tag_dict[train_tag]["time"])
             
             self.tag_dict[train_tag]["tag_vec"]=target_tag_vec
             self.tag_dict[train_tag]["time"]+=1
@@ -118,10 +139,9 @@ class BaseModel():
 
             if self.__class__.__name__=="ContinualLearningModel_Store":
                 # 更新feature_vec
-                # 实验表明feature_vec用calc_target_offset更新后的效果更好
-                # self.tag_dict[train_tag]["feature_vec"]=train_feature_vec.detach()
+                # 实验表明feature_vec用calc_target_vec更新后的效果更好
                 original_feature_vec=self.tag_dict[train_tag]["feature_vec"]
-                new_feature_vec = original_feature_vec + calc_target_offset(original_feature_vec, train_feature_vec.detach(), self.tag_dict[train_tag]["time"])
+                new_feature_vec = calc_target_vec(original_feature_vec, train_feature_vec.detach(), self.tag_dict[train_tag]["time"])
                 self.tag_dict[train_tag]["feature_vec"]=new_feature_vec
     
     def batch_train(self, train_pipe):
@@ -181,13 +201,13 @@ class BaseModel():
         output_tag_vecs=self.cls(train_feature_vecs)
         
         for tag, indexs in index_dict.items():
-            new_tag_vec = self.tag_dict[tag]["tag_vec"] + calc_target_offset(self.tag_dict[tag]["tag_vec"], output_tag_vecs[indexs].detach().mean(dim=0), self.tag_dict[tag]["time"])
+            new_tag_vec = calc_target_vec(self.tag_dict[tag]["tag_vec"], output_tag_vecs[indexs].detach().mean(dim=0), self.tag_dict[tag]["time"])
             original_tag_vecs[indexs] = new_tag_vec
             self.tag_dict[tag]["tag_vec"] = new_tag_vec
 
             if self.__class__.__name__=="ContinualLearningModel_Store":
                 original_feature_vec = self.tag_dict[tag]["feature_vec"]
-                new_feature_vec = original_feature_vec + calc_target_offset(original_feature_vec, train_feature_vecs[indexs].detach().mean(dim=0), self.tag_dict[tag]["time"])
+                new_feature_vec = calc_target_vec(original_feature_vec, train_feature_vecs[indexs].detach().mean(dim=0), self.tag_dict[tag]["time"])
                 self.tag_dict[tag]["feature_vec"] = new_feature_vec
 
         self.cls_optimizer.zero_grad()
@@ -282,7 +302,7 @@ class ContinualLearningModel_Store(BaseModel):
                 
                 # 更新tag_vec
                 original_tag_vec=self.tag_dict[train_tag]["tag_vec"]
-                target_tag_vec = original_tag_vec + calc_target_offset(original_tag_vec, output_tag_vec.detach(), self.tag_dict[train_tag]["time"])
+                target_tag_vec = calc_target_vec(original_tag_vec, output_tag_vec.detach(), self.tag_dict[train_tag]["time"])
                 self.tag_dict[train_tag]["tag_vec"]=target_tag_vec
 
                 # 训练Classifier
@@ -311,7 +331,7 @@ class ContinualLearningModel_Store(BaseModel):
                     return
                 
                 original_tag_vec=self.tag_dict[train_tag]["tag_vec"]
-                target_tag_vec = original_tag_vec + calc_target_offset(original_tag_vec, output_tag_vecs[-1].detach(), self.tag_dict[train_tag]["time"])
+                target_tag_vec = calc_target_vec(original_tag_vec, output_tag_vecs[-1].detach(), self.tag_dict[train_tag]["time"])
                 self.tag_dict[train_tag]["tag_vec"]=target_tag_vec
 
                 # 把所有的tag domain的vec都弄起来
@@ -328,10 +348,9 @@ class ContinualLearningModel_Store(BaseModel):
             self.tag_dict[train_tag]["time"]+=1
 
             # 更新feature_vec
-            # 实验表明feature_vec用calc_target_offset更新后的效果更好
-            # self.tag_dict[train_tag]["feature_vec"]=train_feature_vec.detach()
+            # 实验表明feature_vec用calc_target_vec更新后的效果更好
             original_feature_vec=self.tag_dict[train_tag]["feature_vec"]
-            new_feature_vec = original_feature_vec + calc_target_offset(original_feature_vec, train_feature_vec.detach(), self.tag_dict[train_tag]["time"])
+            new_feature_vec = calc_target_vec(original_feature_vec, train_feature_vec.detach(), self.tag_dict[train_tag]["time"])
             self.tag_dict[train_tag]["feature_vec"]=new_feature_vec
     
     def continual_backward(self, train_sample, train_tag):
@@ -352,7 +371,7 @@ class ContinualLearningModel_Store(BaseModel):
             original_tag_vec=self.tag_dict[train_tag]["tag_vec"]
             
             # 取递减偏离的一点
-            target_tag_vec = original_tag_vec + calc_target_offset(original_tag_vec, output_tag_vec.detach(), self.tag_dict[train_tag]["time"], forward=False)
+            target_tag_vec = calc_target_vec(original_tag_vec, output_tag_vec.detach(), self.tag_dict[train_tag]["time"], forward=False)
             
             self.tag_dict[train_tag]["tag_vec"]=target_tag_vec
             
@@ -381,15 +400,11 @@ class ContinualLearningModel_Store(BaseModel):
             
             original_tag_vec=self.tag_dict[train_tag]["tag_vec"]
             
-            # 有进有退
-            # offset = calc_target_offset(original_tag_vec, output_tag_vecs[-1].detach(), self.tag_dict[train_tag]["time"])
-            # target_tag_vecs = torch.cat( [other_tag_vecs + offset, (original_tag_vec - offset).reshape(1,-1)] )
-
             # 别有进有退了，other_tag_vecs都不去更新。当前的tag_vec退后就行了
-            offset = calc_target_offset(original_tag_vec, output_tag_vecs[-1].detach(), self.tag_dict[train_tag]["time"], forward=False)
-            target_tag_vecs = torch.cat( [other_tag_vecs, (original_tag_vec + offset).reshape(1,-1)] )
+            target_tag_vec = calc_target_vec(original_tag_vec, output_tag_vecs[-1].detach(), self.tag_dict[train_tag]["time"], forward=False)
+            target_tag_vecs = torch.cat( [other_tag_vecs, target_tag_vec.reshape(1,-1)] )
             
-            self.tag_dict[train_tag]["tag_vec"]= original_tag_vec + offset
+            self.tag_dict[train_tag]["tag_vec"]= target_tag_vec
             
             self.cls_optimizer.zero_grad()
             loss=self.cls_criterion(output_tag_vecs, target_tag_vecs)
@@ -497,7 +512,7 @@ class ContinualLearningModel_Generate(BaseModel):
                 original_tag_vec=self.tag_dict[train_tag]["tag_vec"]
                 
                 # 取递减偏离的一点
-                target_tag_vec = original_tag_vec + calc_target_offset(original_tag_vec, output_tag_vec.detach(), self.tag_dict[train_tag]["time"])
+                target_tag_vec = calc_target_vec(original_tag_vec, output_tag_vec.detach(), self.tag_dict[train_tag]["time"])
 
                 self.tag_dict[train_tag]["tag_vec"]=target_tag_vec
                 self.tag_dict[train_tag]["time"]+=1
@@ -530,7 +545,7 @@ class ContinualLearningModel_Generate(BaseModel):
             
                 # 取original_tag_vec与target_tag_vec的连线上的一点为优化目标
                 # 取递减偏离的一点
-                target_tag_vec = original_tag_vec + calc_target_offset(original_tag_vec, output_tag_vecs[-1].detach(), self.tag_dict[train_tag]["time"])
+                target_tag_vec = calc_target_vec(original_tag_vec, output_tag_vecs[-1].detach(), self.tag_dict[train_tag]["time"])
 
                 self.tag_dict[train_tag]["tag_vec"]=target_tag_vec
                 self.tag_dict[train_tag]["time"]+=1
@@ -559,7 +574,7 @@ class ContinualLearningModel_Generate(BaseModel):
             original_tag_vec=self.tag_dict[train_tag]["tag_vec"]
             
             # 取递减偏离的一点
-            target_tag_vec = original_tag_vec + calc_target_offset(original_tag_vec, output_tag_vec.detach(), self.tag_dict[train_tag]["time"], forward=False)
+            target_tag_vec = calc_target_vec(original_tag_vec, output_tag_vec.detach(), self.tag_dict[train_tag]["time"], forward=False)
             
             self.tag_dict[train_tag]["tag_vec"]=target_tag_vec
             
@@ -592,15 +607,11 @@ class ContinualLearningModel_Generate(BaseModel):
             
             original_tag_vec=self.tag_dict[train_tag]["tag_vec"]
             
-            # 有进有退
-            # offset = calc_target_offset(original_tag_vec, output_tag_vecs[-1].detach(), self.tag_dict[train_tag]["time"])
-            # target_tag_vecs = torch.cat( [other_tag_vecs + offset, (original_tag_vec - offset).reshape(1,-1)] )
-            
             # 别有进有退了，other_tag_vecs都不去更新。当前的tag_vec退后就行了
-            offset = calc_target_offset(original_tag_vec, output_tag_vecs[-1].detach(), self.tag_dict[train_tag]["time"], forward=False)
-            target_tag_vecs = torch.cat( [other_tag_vecs, (original_tag_vec + offset).reshape(1,-1)] )
+            target_tag_vec = calc_target_vec(original_tag_vec, output_tag_vecs[-1].detach(), self.tag_dict[train_tag]["time"], forward=False)
+            target_tag_vecs = torch.cat( [other_tag_vecs, target_tag_vec.reshape(1,-1)] )
             
-            self.tag_dict[train_tag]["tag_vec"]= original_tag_vec + offset
+            self.tag_dict[train_tag]["tag_vec"]= target_tag_vec
             
             self.cls_optimizer.zero_grad()
             loss=self.cls_criterion(output_tag_vecs, target_tag_vecs)

@@ -96,7 +96,7 @@ def set_seed(seed=114514):
 	torch.backends.cudnn.deterministic = True
 
 # 权重初始化，默认xavier
-def init_network(model, method='xavier', exclude='embedding', seed=123):
+def init_network(model, method='xavier', exclude='embedding'):
     for name, w in model.named_parameters():
         # print(name,w)
         if exclude not in name:
@@ -113,7 +113,7 @@ def init_network(model, method='xavier', exclude='embedding', seed=123):
                 pass
 
 
-def load_corpus(name, test_size=0.2):
+def load_corpus(name, test_size=0.2, shuffle=True):
     # train_pipe
     # [("sentence","tag1"), ..., ("sentence","tag1"), ..., ("sentence","tag10")]
     
@@ -145,8 +145,8 @@ def load_corpus(name, test_size=0.2):
                 train_pipe.extend([(_,tag) for _ in train])
                 train_dict[tag]=train
                 test_dict[tag]=test
-
-    random.shuffle(train_pipe)
+    if shuffle:
+        random.shuffle(train_pipe)
     
     return train_pipe, train_dict, test_dict
 
@@ -164,15 +164,16 @@ def pre_process(content):
     content_str = re.sub(r'[^\w\s]','',content)
     return content_str
 
-def calc_target_offset(orgin_vec, output_vec, times, forward=True):
+def calc_target_vec(orgin_vec, target_vec, times, forward=True):
     TARGET_VEC_INIT_DEIVATION=0.5
     TARGET_VEC_DECAY_RATE=0.95
     TARGET_VEC_MAX_DEIVATION=0.2
     ratio=TARGET_VEC_INIT_DEIVATION*(TARGET_VEC_DECAY_RATE**times)
     if ratio<TARGET_VEC_MAX_DEIVATION:
         ratio=TARGET_VEC_MAX_DEIVATION
-    offset=(output_vec-orgin_vec)*ratio
+    offset=(target_vec-orgin_vec)*ratio
+    
     if forward:
-        return offset
+        return orgin_vec+offset
     else:
-        return -offset
+        return orgin_vec-offset
