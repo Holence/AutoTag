@@ -30,7 +30,7 @@ class BaseModel():
         self.cls=self.Classifier()
         self.cls.to(self.device)
         # 学习率也应该保存并读取
-        self.cls_optimizer = torch.optim.Adam(self.cls.parameters(), lr=self.CLS_LR)
+        self.cls_optimizer = torch.optim.Adam(list(self.fxm.parameters())+list(self.cls.parameters()), lr=self.CLS_LR)
         self.cls_criterion = torch.nn.MSELoss()
 
         # tag_dict
@@ -58,6 +58,26 @@ class BaseModel():
         torch.save(self.loss_dict, f"{self.save_path}/loss_dict.pt")
         self.fxm.save()
 
+    def train_none(self, train_sample, train_tag):
+        self.iteration+=1
+
+        self.fxm.eval()
+        with torch.no_grad():
+            train_feature_vec=self.fxm(train_sample)
+
+        # 如果tag_dict中没有该tag，就用网络的输出作为该tag的初始tag_vec
+        if not self.tag_dict.get(train_tag):
+            
+            self.cls.eval()
+            with torch.no_grad():
+                tag_vec=self.cls(train_feature_vec)
+            self.tag_dict[train_tag]={
+                "tag_vec": tag_vec.detach(),
+                "time": 1
+            }
+            if self.__class__.__name__=="ContinualLearningModel_Store":
+                self.tag_dict[train_tag]["feature_vec"]=train_feature_vec.detach()
+    
     def continual_forward_baseline(self, train_sample, train_tag):
         "单样本，正向训练，不带任何持续学习优化算法，作为效果比较的底线"
         self.iteration+=1
@@ -278,7 +298,7 @@ class ContinualLearningModel_Store(BaseModel):
                 other_tag_vecs=torch.stack(other_tag_vecs)
                 
                 other_feature_vecs=torch.stack(other_feature_vecs)
-                cat_feature_vecs = torch.cat([other_feature_vecs, train_feature_vec])
+                cat_feature_vecs = torch.cat([other_feature_vecs, train_feature_vec.reshape(1,-1)])
                 
                 # 开始训练classifier
                 self.cls.train()
@@ -296,7 +316,7 @@ class ContinualLearningModel_Store(BaseModel):
 
                 # 把所有的tag domain的vec都弄起来
                 # 因为在classifier中current feature_vec放在了最后一个，这里也把current tag_vec放在最后一个
-                target_tag_vecs=torch.cat([ other_tag_vecs, target_tag_vec ])
+                target_tag_vecs=torch.cat([ other_tag_vecs, target_tag_vec.reshape(1,-1) ])
                 
                 # 训练Classifier
                 self.cls_optimizer.zero_grad()
@@ -347,7 +367,7 @@ class ContinualLearningModel_Store(BaseModel):
             other_tag_vecs=torch.stack(other_tag_vecs)
                 
             other_feature_vecs=torch.stack(other_feature_vecs)
-            cat_feature_vecs = torch.cat([other_feature_vecs, train_feature_vec])
+            cat_feature_vecs = torch.cat([other_feature_vecs, train_feature_vec.reshape(1,-1)])
 
             # 开始训练classifier
             self.cls.train()
@@ -363,11 +383,11 @@ class ContinualLearningModel_Store(BaseModel):
             
             # 有进有退
             # offset = calc_target_offset(original_tag_vec, output_tag_vecs[-1].detach(), self.tag_dict[train_tag]["time"])
-            # target_tag_vecs = torch.cat( [other_tag_vecs + offset, original_tag_vec - offset] )
+            # target_tag_vecs = torch.cat( [other_tag_vecs + offset, (original_tag_vec - offset).reshape(1,-1)] )
 
             # 别有进有退了，other_tag_vecs都不去更新。当前的tag_vec退后就行了
             offset = calc_target_offset(original_tag_vec, output_tag_vecs[-1].detach(), self.tag_dict[train_tag]["time"], forward=False)
-            target_tag_vecs = torch.cat( [other_tag_vecs, original_tag_vec + offset] )
+            target_tag_vecs = torch.cat( [other_tag_vecs, (original_tag_vec + offset).reshape(1,-1)] )
             
             self.tag_dict[train_tag]["tag_vec"]= original_tag_vec + offset
             
@@ -494,7 +514,7 @@ class ContinualLearningModel_Generate(BaseModel):
                 self.gen.eval()
                 with torch.no_grad():
                     other_feature_vecs=self.gen(other_tag_vecs)
-                cat_feature_vecs = torch.cat([other_feature_vecs, train_feature_vec])
+                cat_feature_vecs = torch.cat([other_feature_vecs, train_feature_vec.reshape(1,-1)])
                 
                 # 开始训练classifier
                 self.cls.train()
@@ -517,7 +537,7 @@ class ContinualLearningModel_Generate(BaseModel):
 
                 # 把所有的tag domain的vec都弄起来
                 # 因为在classifier中current feature_vec放在了最后一个，这里也把current tag_vec放在最后一个
-                target_tag_vecs=torch.cat([ other_tag_vecs, target_tag_vec ])
+                target_tag_vecs=torch.cat([ other_tag_vecs, target_tag_vec.reshape(1,-1) ])
                 
                 loss=self.cls_criterion(output_tag_vecs, target_tag_vecs)
                 train_generator(self.tag_dict[train_tag]["tag_vec"], train_feature_vec.detach(), loss)
@@ -558,7 +578,7 @@ class ContinualLearningModel_Generate(BaseModel):
             self.gen.eval()
             with torch.no_grad():
                 other_feature_vecs=self.gen(other_tag_vecs)
-            cat_feature_vecs = torch.cat([other_feature_vecs, train_feature_vec])
+            cat_feature_vecs = torch.cat([other_feature_vecs, train_feature_vec.reshape(1,-1)])
 
             # 开始训练classifier
             self.cls.train()
@@ -574,11 +594,11 @@ class ContinualLearningModel_Generate(BaseModel):
             
             # 有进有退
             # offset = calc_target_offset(original_tag_vec, output_tag_vecs[-1].detach(), self.tag_dict[train_tag]["time"])
-            # target_tag_vecs = torch.cat( [other_tag_vecs + offset, original_tag_vec - offset] )
+            # target_tag_vecs = torch.cat( [other_tag_vecs + offset, (original_tag_vec - offset).reshape(1,-1)] )
             
             # 别有进有退了，other_tag_vecs都不去更新。当前的tag_vec退后就行了
             offset = calc_target_offset(original_tag_vec, output_tag_vecs[-1].detach(), self.tag_dict[train_tag]["time"], forward=False)
-            target_tag_vecs = torch.cat( [other_tag_vecs, original_tag_vec + offset] )
+            target_tag_vecs = torch.cat( [other_tag_vecs, (original_tag_vec + offset).reshape(1,-1)] )
             
             self.tag_dict[train_tag]["tag_vec"]= original_tag_vec + offset
             
