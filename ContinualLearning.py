@@ -100,7 +100,7 @@ class BaseModel():
                 self.tag_dict[train_tag]["feature_vec"]=new_feature_vec
     
     def continual_forward_baseline(self, train_sample, train_tag):
-        "单样本，正向训练，不带任何持续学习优化算法，作为效果比较的底线"
+        "单样本，正向训练，不带任何持续学习优化算法，作为效果比较的下限"
         self.iteration+=1
 
         self.fxm.train()
@@ -145,7 +145,7 @@ class BaseModel():
                 self.tag_dict[train_tag]["feature_vec"]=new_feature_vec
     
     def batch_train(self, train_pipe):
-        "批量，正向训练，作为效果比较的顶线"
+        "批量，正向训练，作为效果比较的上限"
         self.iteration+=1
         
         # 遍历一遍训练集中所有的tag，如果tag_dict中没有该tag，就用网络的输出作为该tag的初始tag_vec
