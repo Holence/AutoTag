@@ -1,13 +1,12 @@
 from utils import *
 import torch
-from torch.nn.utils.rnn import pack_padded_sequence
 import jieba
 
 EMBED_DIM=300                   # word vec的维度
-HIDDEN_DIM=384                  # lstm隐藏层的向量维度
+HIDDEN_DIM=300                  # lstm隐藏层的向量维度
 LAYERS=2                        # lstm层数
 DROPOUT=0.5                     
-TAG_VEC_DIM=384                      # 输出空间的维度
+TAG_VEC_DIM=300                      # 输出空间的维度
 
 class Classifier(torch.nn.Module):
     def __init__(self):
@@ -39,7 +38,6 @@ class LSTM(torch.nn.Module):
     def __init__(self) -> None:
         super().__init__()
         self.device=torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
-        print("Device:",self.device)
 
         # 导入或生成token_id_dict
         # {
